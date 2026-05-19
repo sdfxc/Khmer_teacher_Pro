@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Represents a student in a teacher's class",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "gender": { "type": "string", "enum": ["ប្រុស", "ស្រី"] },
+        "level": { "type": "string", "enum": ["ឆ្នើម", "សកម្ម", "អភិវឌ្ឍ", "កំពុងរីកចម្រើន"] },
+        "className": { "type": "string", "enum": ["ថ្នាក់ទី៧ក", "ថ្នាក់ទី៨ក", "ថ្នាក់ទី៩ក"] }
+      },
+      "required": ["name", "gender", "level", "className"]
+    }
+  },
+  "firestore": {
+    "teachers/{userId}/students/{studentId}": {
+      "schema": "Student",
+      "description": "A student document stored under a specific teacher's subcollection."
+    }
+  }
+}
