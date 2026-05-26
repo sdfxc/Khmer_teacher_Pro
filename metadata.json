@@ -1,8 +1,6 @@
 {
-  "name": "Khmer Teacher Pro",
-  "description": "ឧបករណ៍ជំនួយសម្រាប់គ្រូបង្រៀនដែលមានមុខងារបង្វិលឈ្មោះ និងបែងចែកក្រុមសិស្សដោយស្វ័យប្រវត្តិ",
+  "name": "Remix: EduSpin Quiz Master",
+  "description": "An interactive classroom game with a student randomizer and AI-powered flashcard quizzes generated from lesson content.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
