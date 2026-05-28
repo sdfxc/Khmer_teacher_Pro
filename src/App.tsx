@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Sparkles, LayoutGrid, RotateCcw, User, LogIn, LogOut, Plus, Moon, Sun, Trash2, GraduationCap, Compass, Users as UsersIcon, UserCog, Check } from 'lucide-react';
+import { Sparkles, LayoutGrid, RotateCcw, User, LogIn, LogOut, Plus, Moon, Sun, Trash2, GraduationCap, Compass, Users as UsersIcon, UserCog, Check, Cloud, Loader2 } from 'lucide-react';
 import StudentPanel from './components/StudentPanel';
 import QuizPanel from './components/QuizPanel';
 import LessonModal from './components/LessonModal';
@@ -13,6 +13,8 @@ import SpinningWheel from './components/SpinningWheel';
 import GroupDivider from './components/GroupDivider';
 import StudentManager from './components/StudentManager';
 import { Student, Question, QuizCard, ClassInfo, TeacherAccount } from './types';
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from './lib/firebase';
 
 const EMOJIS = ["🥰", "😂", "😩", "🥳", "🥺", "😇", "😎", "🤩", "🤔", "🤗", "🤭", "🫠", "😤", "😮💨", "🫡", "😬", "🙄", "🤒", "😵💫", "😳", "🤪", "😜", "🤫", "🫣", "☹️", "😕"];
 
@@ -25,6 +27,7 @@ const DEFAULT_CLASSES: ClassInfo[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<'wheel' | 'quiz' | 'groups' | 'students'>('wheel');
   const [showWheelBulk, setShowWheelBulk] = useState(false);
+  const [loadingCloudData, setLoadingCloudData] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('khmer_teacher_dark_mode');
@@ -79,61 +82,201 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Save changes to localStorage on states update
+  // Load teacher classes from Cloud when logged in
   useEffect(() => {
-    localStorage.setItem('khmer_teacher_classes', JSON.stringify(classes));
-  }, [classes]);
+    if (!teacher) {
+      const savedClasses = localStorage.getItem('khmer_teacher_classes');
+      setClasses(savedClasses ? JSON.parse(savedClasses) : DEFAULT_CLASSES);
+      
+      const savedActiveId = localStorage.getItem('khmer_teacher_active_class_id') || 'class-7a';
+      setActiveClassId(savedActiveId);
+      return;
+    }
+
+    const loadTeacherClasses = async () => {
+      try {
+        setLoadingCloudData(true);
+        const classesCollRef = collection(db, 'teachers', teacher.id, 'classes');
+        const classesSnap = await getDocs(classesCollRef);
+        
+        let fetchedClasses: ClassInfo[] = [];
+        classesSnap.forEach(docSnap => {
+          fetchedClasses.push(docSnap.data() as ClassInfo);
+        });
+
+        if (fetchedClasses.length === 0) {
+          // Newly registered teacher. Seed with DEFAULT_CLASSES in Firestore
+          for (const cls of DEFAULT_CLASSES) {
+            await setDoc(doc(db, 'teachers', teacher.id, 'classes', cls.id), {
+              id: cls.id,
+              name: cls.name,
+              pickedIds: [],
+              cards: [],
+              createdAt: new Date().toISOString()
+            });
+            fetchedClasses.push(cls);
+          }
+        }
+        
+        setClasses(fetchedClasses);
+        
+        const lastActiveId = localStorage.getItem(`khmer_teacher_active_class_id_${teacher.id}`) || fetchedClasses[0]?.id;
+        const exists = fetchedClasses.some(c => c.id === lastActiveId);
+        setActiveClassId(exists ? lastActiveId : fetchedClasses[0]?.id);
+      } catch (err) {
+        console.error('Failed to load classes from cloud Firestore:', err);
+      } finally {
+        setLoadingCloudData(false);
+      }
+    };
+
+    loadTeacherClasses();
+  }, [teacher]);
+
+  // Load students, cards, and picked status when activeClassId shifts
+  useEffect(() => {
+    if (!activeClassId) return;
+    
+    if (teacher) {
+      localStorage.setItem(`khmer_teacher_active_class_id_${teacher.id}`, activeClassId);
+    } else {
+      localStorage.setItem('khmer_teacher_active_class_id', activeClassId);
+    }
+
+    if (!teacher) {
+      // Local fallback
+      const loadedStudents = localStorage.getItem(`students_class_${activeClassId}`);
+      setStudents(loadedStudents ? JSON.parse(loadedStudents) : []);
+
+      const loadedCards = localStorage.getItem(`quiz_cards_class_${activeClassId}`);
+      setCards(loadedCards ? JSON.parse(loadedCards) : []);
+
+      const loadedPicked = localStorage.getItem(`picked_students_class_${activeClassId}`);
+      setPickedIds(loadedPicked ? JSON.parse(loadedPicked) : []);
+      return;
+    }
+
+    const loadClassDetails = async () => {
+      try {
+        setLoadingCloudData(true);
+        
+        // 1. Fetch class doc
+        const classDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId);
+        const classSnap = await getDoc(classDocRef);
+        
+        if (classSnap.exists()) {
+          const classData = classSnap.data();
+          setCards(classData.cards || []);
+          setPickedIds(classData.pickedIds || []);
+        } else {
+          setCards([]);
+          setPickedIds([]);
+        }
+
+        // 2. Fetch students
+        const studentsCollRef = collection(db, 'teachers', teacher.id, 'classes', activeClassId, 'students');
+        const studentsSnap = await getDocs(studentsCollRef);
+        
+        let loadedStudents: Student[] = [];
+        studentsSnap.forEach(docSnap => {
+          loadedStudents.push(docSnap.data() as Student);
+        });
+        setStudents(loadedStudents);
+      } catch (err) {
+        console.error('Failed to load class details from Firestore:', err);
+      } finally {
+        setLoadingCloudData(false);
+      }
+    };
+
+    loadClassDetails();
+  }, [activeClassId, teacher]);
+
+  // Save changes to localStorage on states update as fallback for offline use
+  useEffect(() => {
+    if (!teacher) {
+      localStorage.setItem('khmer_teacher_classes', JSON.stringify(classes));
+    }
+  }, [classes, teacher]);
 
   useEffect(() => {
-    localStorage.setItem('khmer_teacher_active_class_id', activeClassId);
-  }, [activeClassId]);
-
-  useEffect(() => {
-    if (activeClassId) {
+    if (activeClassId && !teacher) {
       localStorage.setItem(`students_class_${activeClassId}`, JSON.stringify(students));
     }
-  }, [students, activeClassId]);
+  }, [students, activeClassId, teacher]);
 
   useEffect(() => {
-    if (activeClassId) {
+    if (activeClassId && !teacher) {
       localStorage.setItem(`quiz_cards_class_${activeClassId}`, JSON.stringify(cards));
     }
-  }, [cards, activeClassId]);
+  }, [cards, activeClassId, teacher]);
 
   useEffect(() => {
-    if (activeClassId) {
+    if (activeClassId && !teacher) {
       localStorage.setItem(`picked_students_class_${activeClassId}`, JSON.stringify(pickedIds));
     }
-  }, [pickedIds, activeClassId]);
+  }, [pickedIds, activeClassId, teacher]);
+
+  // Helper to save class-level states to Firestore
+  const saveClassMetadata = useCallback(async (updatedCards: QuizCard[], updatedPickedIds: string[]) => {
+    if (teacher && activeClassId) {
+      try {
+        await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+          cards: updatedCards,
+          pickedIds: updatedPickedIds
+        }, { merge: true });
+      } catch (err) {
+        console.error('Failed to save class metadata to cloud:', err);
+      }
+    }
+  }, [teacher, activeClassId]);
+
+  // Helper to save student score updates to Firestore
+  const saveStudentScore = useCallback(async (studentId: string, newScore: number) => {
+    if (teacher && activeClassId) {
+      try {
+        await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', studentId), {
+          score: newScore
+        }, { merge: true });
+      } catch (err) {
+        console.error('Failed to update student score on cloud:', err);
+      }
+    }
+  }, [teacher, activeClassId]);
 
   // Handler for switching class
   const handleSwitchClass = (classId: string) => {
     setActiveClassId(classId);
-    
-    const loadedStudents = localStorage.getItem(`students_class_${classId}`);
-    setStudents(loadedStudents ? JSON.parse(loadedStudents) : []);
-
-    const loadedCards = localStorage.getItem(`quiz_cards_class_${classId}`);
-    setCards(loadedCards ? JSON.parse(loadedCards) : []);
-
-    const loadedPicked = localStorage.getItem(`picked_students_class_${classId}`);
-    setPickedIds(loadedPicked ? JSON.parse(loadedPicked) : []);
-
     setSelectedStudentId(null);
     setActiveCardId(null);
   };
 
-  const handleAddClass = () => {
+  const handleAddClass = async () => {
     const className = window.prompt('សូមបញ្ចូលឈ្មោះថ្នាក់រៀនថ្មី៖', 'ថ្នាក់ទី១០ក');
     if (className && className.trim()) {
       const newClassId = `class-${Date.now()}`;
       const newClass = { id: newClassId, name: className.trim() };
+      
+      if (teacher) {
+        try {
+          await setDoc(doc(db, 'teachers', teacher.id, 'classes', newClassId), {
+            id: newClassId,
+            name: className.trim(),
+            pickedIds: [],
+            cards: [],
+            createdAt: new Date().toISOString()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `teachers/${teacher.id}/classes/${newClassId}`);
+        }
+      }
+      
       setClasses(prev => [...prev, newClass]);
       handleSwitchClass(newClassId);
     }
   };
 
-  const handleRemoveClass = (e: React.MouseEvent, classId: string, className: string) => {
+  const handleRemoveClass = async (e: React.MouseEvent, classId: string, className: string) => {
     e.stopPropagation(); // prevent switching to it
     if (classes.length <= 1) {
       alert('ត្រូវតែមានថ្នាក់រៀនយ៉ាងហោចណាស់មួយ!');
@@ -141,6 +284,15 @@ export default function App() {
     }
     if (window.confirm(`តើលោកគ្រូ អ្នកគ្រូ ពិតជាចង់លុបថ្នាក់ទី «${className}» នេះចោលមែនទេ?`)) {
       const updatedClasses = classes.filter(c => c.id !== classId);
+      
+      if (teacher) {
+        try {
+          await deleteDoc(doc(db, 'teachers', teacher.id, 'classes', classId));
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `teachers/${teacher.id}/classes/${classId}`);
+        }
+      }
+      
       setClasses(updatedClasses);
       localStorage.removeItem(`students_class_${classId}`);
       localStorage.removeItem(`quiz_cards_class_${classId}`);
@@ -152,7 +304,7 @@ export default function App() {
     }
   };
 
-  const addStudent = useCallback((name: string) => {
+  const addStudent = useCallback(async (name: string) => {
     const randomEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
     const newStudent: Student = {
       id: `s-${Date.now()}-${Math.random()}`,
@@ -163,10 +315,19 @@ export default function App() {
       status: 'សកម្ម',
       classId: activeClassId
     };
-    setStudents(prev => [...prev, newStudent]);
-  }, [activeClassId]);
 
-  const addStudentDetail = useCallback((fields: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ'; classId: string }) => {
+    if (teacher) {
+      try {
+        await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', newStudent.id), newStudent);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `teachers/${teacher.id}/classes/${activeClassId}/students/${newStudent.id}`);
+      }
+    }
+
+    setStudents(prev => [...prev, newStudent]);
+  }, [activeClassId, teacher]);
+
+  const addStudentDetail = useCallback(async (fields: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ'; classId: string }) => {
     const randomEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
     const newStudent: Student = {
       id: `s-${Date.now()}-${Math.random()}`,
@@ -179,18 +340,35 @@ export default function App() {
     };
     
     if (fields.classId === activeClassId) {
+      if (teacher) {
+        try {
+          await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', newStudent.id), newStudent);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `teachers/${teacher.id}/classes/${activeClassId}/students/${newStudent.id}`);
+        }
+      }
       setStudents(prev => [...prev, newStudent]);
     } else {
-      const savedKey = `students_class_${fields.classId}`;
-      const savedRaw = localStorage.getItem(savedKey);
-      const savedList = savedRaw ? JSON.parse(savedRaw) : [];
-      savedList.push(newStudent);
-      localStorage.setItem(savedKey, JSON.stringify(savedList));
+      if (teacher) {
+        try {
+          await setDoc(doc(db, 'teachers', teacher.id, 'classes', fields.classId, 'students', newStudent.id), newStudent);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `teachers/${teacher.id}/classes/${fields.classId}/students/${newStudent.id}`);
+        }
+      } else {
+        const savedKey = `students_class_${fields.classId}`;
+        const savedRaw = localStorage.getItem(savedKey);
+        const savedList = savedRaw ? JSON.parse(savedRaw) : [];
+        savedList.push(newStudent);
+        localStorage.setItem(savedKey, JSON.stringify(savedList));
+      }
       alert(`បានរក្សាទុកសិស្ស «${fields.name}» ទៅកាន់ថ្នាក់ផ្សេងជោគជ័យ!`);
     }
-  }, [activeClassId]);
+  }, [activeClassId, teacher]);
 
-  const updateStudentDetail = useCallback((id: string, fields: Partial<Student>) => {
+  const updateStudentDetail = useCallback(async (id: string, fields: Partial<Student>) => {
+    let updatedStudent: Student | null = null;
+    
     setStudents(prev => {
       const studentToUpdate = prev.find(s => s.id === id);
       if (!studentToUpdate) return prev;
@@ -198,38 +376,76 @@ export default function App() {
       const newClassId = fields.classId || studentToUpdate.classId || activeClassId;
       const oldClassId = studentToUpdate.classId || activeClassId;
       
+      updatedStudent = { ...studentToUpdate, ...fields, classId: newClassId };
+
       if (newClassId !== oldClassId) {
         // Move to another class
         const filtered = prev.filter(s => s.id !== id);
-        const targetKey = `students_class_${newClassId}`;
-        const targetRaw = localStorage.getItem(targetKey);
-        const targetList = targetRaw ? JSON.parse(targetRaw) : [];
         
-        // Remove from target list if already exists (anti-duplication)
-        const cleanedList = targetList.filter((s: any) => s.id !== id);
-        cleanedList.push({ ...studentToUpdate, ...fields });
-        localStorage.setItem(targetKey, JSON.stringify(cleanedList));
+        if (teacher) {
+          (async () => {
+            try {
+              await deleteDoc(doc(db, 'teachers', teacher.id, 'classes', oldClassId, 'students', id));
+              await setDoc(doc(db, 'teachers', teacher.id, 'classes', newClassId, 'students', id), updatedStudent!);
+            } catch (err) {
+              console.error(err);
+            }
+          })();
+        } else {
+          const targetKey = `students_class_${newClassId}`;
+          const targetRaw = localStorage.getItem(targetKey);
+          const targetList = targetRaw ? JSON.parse(targetRaw) : [];
+          
+          const cleanedList = targetList.filter((s: any) => s.id !== id);
+          cleanedList.push(updatedStudent);
+          localStorage.setItem(targetKey, JSON.stringify(cleanedList));
+        }
         
         alert(`បានផ្លាស់ប្ដូរថ្នាក់សិស្ស «${fields.name || studentToUpdate.name}» ទៅកាន់ថ្នាក់ផ្សេងជោគជ័យ!`);
         return filtered;
       } else {
+        if (teacher) {
+          (async () => {
+            try {
+              await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', id), updatedStudent!);
+            } catch (err) {
+              console.error(err);
+            }
+          })();
+        }
         return prev.map(s => s.id === id ? { ...s, ...fields } : s);
       }
     });
-  }, [activeClassId]);
+  }, [activeClassId, teacher]);
 
-  const removeStudent = useCallback((id: string) => {
+  const removeStudent = useCallback(async (id: string) => {
+    if (teacher) {
+      try {
+        await deleteDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `teachers/${teacher.id}/classes/${activeClassId}/students/${id}`);
+      }
+    }
     setStudents(prev => prev.filter(s => s.id !== id));
     if (selectedStudentId === id) setSelectedStudentId(null);
-  }, [selectedStudentId]);
+  }, [selectedStudentId, teacher, activeClassId]);
 
-  const clearStudents = useCallback(() => {
+  const clearStudents = useCallback(async () => {
     if (window.confirm('តើអ្នកពិតជាចង់លុបឈ្មោះសិស្សទាំងអស់មែនទេ?')) {
+      if (teacher) {
+        try {
+          for (const s of students) {
+            await deleteDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', s.id));
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `teachers/${teacher.id}/classes/${activeClassId}/students`);
+        }
+      }
       setStudents([]);
       setSelectedStudentId(null);
       setPickedIds([]);
     }
-  }, []);
+  }, [students, teacher, activeClassId]);
 
   const handleQuestionsGenerated = useCallback((questions: Question[]) => {
     const newCards: QuizCard[] = questions.map((q, i) => ({
@@ -240,45 +456,67 @@ export default function App() {
       status: 'idle'
     }));
     setCards(newCards);
-  }, []);
+    saveClassMetadata(newCards, pickedIds);
+  }, [pickedIds, saveClassMetadata]);
 
   const handleAnswer = useCallback((correct: boolean) => {
     if (!activeCardId || !selectedStudentId) return;
 
     // Update student score
+    let targetScore = 0;
     setStudents(prev => prev.map(s => {
       if (s.id === selectedStudentId) {
-        return { ...s, score: s.score + (correct ? 3 : 0) };
+        targetScore = s.score + (correct ? 3 : 0);
+        saveStudentScore(selectedStudentId, targetScore);
+        return { ...s, score: targetScore };
       }
       return s;
     }));
 
     // Update card status
-    setCards(prev => prev.map(c => {
+    const updatedCards = cards.map(c => {
       if (c.id === activeCardId) {
-        return { ...c, isRevealed: true, status: correct ? 'correct' : 'wrong' };
+        return { ...c, isRevealed: true, status: correct ? 'correct' : 'wrong' as any };
       }
       return c;
-    }));
+    });
+    setCards(updatedCards);
 
     // Add student to picked list so they are not picked again
-    setPickedIds(prev => {
-      if (prev.includes(selectedStudentId)) return prev;
-      return [...prev, selectedStudentId];
-    });
+    const updatedPickedIds = pickedIds.includes(selectedStudentId)
+      ? pickedIds
+      : [...pickedIds, selectedStudentId];
+    setPickedIds(updatedPickedIds);
 
+    saveClassMetadata(updatedCards, updatedPickedIds);
     setActiveCardId(null);
-  }, [activeCardId, selectedStudentId]);
+  }, [activeCardId, selectedStudentId, cards, pickedIds, saveClassMetadata, saveStudentScore]);
 
-  const resetMatch = useCallback(() => {
+  const resetMatch = useCallback(async () => {
     if (window.confirm('តើអ្នកពិតជាចង់កំណត់ពិន្ទុ និងការបើកសន្លឹកប័ណ្ណឡើងវិញមែនទេ?')) {
+      if (teacher && activeClassId) {
+        try {
+          for (const s of students) {
+            await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', s.id), {
+              score: 0
+            }, { merge: true });
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      
       setStudents(prev => prev.map(s => ({ ...s, score: 0 })));
-      setCards(prev => prev.map(c => ({ ...c, isRevealed: false, status: 'idle' })));
+      
+      const resetCards = cards.map(c => ({ ...c, isRevealed: false, status: 'idle' as any }));
+      setCards(resetCards);
       setSelectedStudentId(null);
       setPickedIds([]);
       setActiveCardId(null);
+      
+      saveClassMetadata(resetCards, []);
     }
-  }, []);
+  }, [students, cards, teacher, activeClassId, saveClassMetadata]);
 
   const resetAll = useCallback(() => {
     if (window.confirm('តើអ្នកពិតជាចង់កំណត់កម្មវិធីឡើងវិញទាំងស្រុងមែនទេ?')) {
@@ -295,9 +533,36 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
-    if (window.confirm('តើអ្នកពិតជាចង់ចាកចេញពីគណនីគ្រូបង្រៀនមែនទេ?')) {
+    if (window.confirm('តើលោកគ្រូ អ្នកគ្រូ ពិតជាចង់ចាកចេញពីគណនីមែនទេ? (រាល់ទិន្នន័យដែលបានរក្សាទុកក្នុង Cloud នឹងមិនបាត់បង់ទេ ហើយទំព័រនេះនឹងត្រូវលាងសម្អាតឡើងវិញជាទម្រង់ថ្មី)')) {
+      // Clear logged in teacher token
       localStorage.removeItem('logged_in_teacher');
+      
+      // Also clear active teacher's selected class ID in memory & offline caches
+      if (teacher) {
+        localStorage.removeItem(`khmer_teacher_active_class_id_${teacher.id}`);
+      }
+      localStorage.removeItem('khmer_teacher_active_class_id');
+      localStorage.removeItem('khmer_teacher_classes');
+
+      // Clear all cached students/cards/pickedIds in localstorage for a clean slate
+      const keysToClear = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('students_class_') || key.startsWith('quiz_cards_class_') || key.startsWith('picked_students_class_'))) {
+          keysToClear.push(key);
+        }
+      }
+      keysToClear.forEach(k => localStorage.removeItem(k));
+
+      // Reset application states back to fresh template
       setTeacher(null);
+      setClasses(DEFAULT_CLASSES);
+      setActiveClassId('class-7a');
+      setStudents([]);
+      setCards([]);
+      setPickedIds([]);
+      setSelectedStudentId(null);
+      setActiveCardId(null);
     }
   };
 
@@ -317,11 +582,23 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight flex items-center gap-2">
-              <span className="text-indigo-600 dark:text-indigo-400 italic">Khmer Teacher Pro</span>
-              <span className="text-xs px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 rounded-full">EduSpin</span>
+              <span className="text-indigo-600 dark:text-indigo-400">Teacher EduSpin</span>
+              <span className="text-xs px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 rounded-full">Edu_Pro</span>
             </h1>
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none">
-              {teacher ? `សាលារៀន៖ ${teacher.schoolName}` : 'ប្រព័ន្ធសិក្សាអន្តរកម្មសម្រាប់គ្រូបង្រៀន'}
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none flex items-center gap-2 flex-wrap">
+              <span>{teacher ? `សាលារៀន៖ ${teacher.schoolName}` : 'ប្រព័ន្ធសិក្សាអន្តរកម្មសម្រាប់គ្រូបង្រៀន'}</span>
+              {loadingCloudData && (
+                <span className="inline-flex items-center gap-1.5 text-indigo-500 dark:text-indigo-400 animate-pulse font-black text-[9px] uppercase ml-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>កំពុង Sync Cloud...</span>
+                </span>
+              )}
+              {teacher && !loadingCloudData && (
+                <span className="inline-flex items-center gap-1 text-emerald-500 dark:text-emerald-400 font-black text-[9px] uppercase ml-1.5">
+                  <Cloud className="w-3 h-3" />
+                  <span>Cloud Active</span>
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -560,6 +837,8 @@ export default function App() {
             <GroupDivider
               students={students}
               activeClassName={activeClass?.name || 'ថ្នាក់រៀន'}
+              activeClassId={activeClassId || ''}
+              teacher={teacher}
             />
           </div>
         )}
@@ -573,9 +852,32 @@ export default function App() {
               onAddStudentDetail={addStudentDetail}
               onRemoveStudent={removeStudent}
               onUpdateStudentDetail={updateStudentDetail}
-              onBulkAddStudents={(text) => {
-                const names = text.split('\n').filter(n => n.trim());
-                names.forEach(name => addStudent(name.trim()));
+              onBulkAddStudents={async (list) => {
+                const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+                const newStudents: Student[] = list.map(item => ({
+                  id: `s-${Date.now()}-${Math.random()}`,
+                  name: item.name,
+                  score: 0,
+                  emoji: randomEmoji(),
+                  gender: item.gender,
+                  status: item.status,
+                  classId: activeClassId
+                }));
+
+                if (teacher) {
+                  try {
+                    // Upload all raw students to Firestore for this class
+                    await Promise.all(
+                      newStudents.map(student => 
+                        setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', student.id), student)
+                      )
+                    );
+                  } catch (err) {
+                    handleFirestoreError(err, OperationType.CREATE, `teachers/${teacher.id}/classes/${activeClassId}/students`);
+                  }
+                }
+
+                setStudents(prev => [...prev, ...newStudents]);
               }}
             />
           </div>

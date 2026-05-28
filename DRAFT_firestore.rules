@@ -7,19 +7,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
     
-    // Primitive definition helpers
-    function incoming() {
-      return request.resource.data;
-    }
-    
-    function existing() {
-      return resource.data;
-    }
-    
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-    
     // Validation helper for Teacher
     function isValidTeacher(data) {
       return data.keys().hasAll(['id', 'name', 'schoolName', 'username', 'password'])
@@ -46,8 +33,7 @@ service cloud.firestore {
     match /teachers/{teacherId} {
       allow create: if isValidTeacher(incoming());
       allow get: if true;
-      allow update: if isValidTeacher(incoming()) && existing().password == incoming().password;
-      allow delete: if existing() != null;
+      allow update, delete: if isValidTeacher(incoming()) && existing().password == incoming().password;
       
       match /classes/{classId} {
         allow read, write: if true;

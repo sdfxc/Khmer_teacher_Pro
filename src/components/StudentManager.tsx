@@ -9,7 +9,7 @@ interface StudentManagerProps {
   activeClassId: string;
   onAddStudentDetail: (fields: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ'; classId: string }) => void;
   onRemoveStudent: (id: string) => void;
-  onBulkAddStudents: (namesText: string) => void;
+  onBulkAddStudents: (list: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ' }[]) => void;
   onUpdateStudentDetail?: (id: string, fields: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ'; classId: string }) => void;
 }
 
@@ -42,6 +42,62 @@ export default function StudentManager({
   // Bulk add toggle
   const [showBulkForm, setShowBulkForm] = useState(false);
   const [bulkTextInput, setBulkTextInput] = useState('');
+  const [parsedStudents, setParsedStudents] = useState<{ name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ' }[]>([]);
+
+  const handleBulkTextChange = (text: string) => {
+    setBulkTextInput(text);
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    setParsedStudents(prev => {
+      return lines.map((name, i) => {
+        // Keep existing if same name & position
+        const existing = prev[i];
+        if (existing && existing.name === name) {
+          return existing;
+        }
+
+        const existingByName = prev.find(s => s.name === name);
+        if (existingByName) {
+          return {
+            name,
+            gender: existingByName.gender,
+            status: existingByName.status
+          };
+        }
+
+        // Guess gender slightly for better UX
+        let defaultGender: 'ប្រុស' | 'ស្រី' = 'ប្រុស';
+        const lowerName = name.toLowerCase();
+        if (
+          lowerName.includes('ស្រី') || 
+          lowerName.includes('កញ្ញា') ||
+          lowerName.endsWith('ណា') ||
+          lowerName.endsWith('នី') ||
+          lowerName.endsWith('លាភ') ||
+          lowerName.endsWith('លីន') ||
+          lowerName.endsWith('ទេវី') ||
+          lowerName.endsWith('ម៉ា') ||
+          lowerName.endsWith('ផល្លា')
+        ) {
+          defaultGender = 'ស្រី';
+        }
+        
+        return {
+          name,
+          gender: defaultGender,
+          status: 'សកម្ម' as const
+        };
+      });
+    });
+  };
+
+  const handleUpdateParsedStudent = (index: number, fields: Partial<{ name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ' }>) => {
+    setParsedStudents(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...fields } as any;
+      return updated;
+    });
+  };
 
   // Handle excel export
   const exportToExcel = () => {
@@ -81,9 +137,10 @@ export default function StudentManager({
 
   const handleBulkSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (bulkTextInput.trim()) {
-      onBulkAddStudents(bulkTextInput);
+    if (parsedStudents.length > 0) {
+      onBulkAddStudents(parsedStudents);
       setBulkTextInput('');
+      setParsedStudents([]);
       setShowBulkForm(false);
     }
   };
@@ -257,22 +314,81 @@ export default function StudentManager({
 
       {/* Bulk Form Add */}
       {showBulkForm && (
-        <form onSubmit={handleBulkSubmit} className="bg-white dark:bg-slate-900 border border-slate-250/60 dark:border-slate-805 p-6 rounded-3xl shadow-sm space-y-4 animate-in slide-in-from-top-3 duration-300">
+        <form onSubmit={handleBulkSubmit} className="bg-white dark:bg-slate-900 border border-slate-250/60 dark:border-slate-805 p-6 rounded-3xl shadow-sm space-y-5 animate-in slide-in-from-top-3 duration-300">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase">បញ្ចូលឈ្មោះច្រើន (មួយជួរ ឈ្មោះមួយ)</label>
             <textarea
               required
               placeholder="ជា ឧត្តម&#10;លី ម៉ារីណា&#10;សុខ រីបុល"
               value={bulkTextInput}
-              onChange={(e) => setBulkTextInput(e.target.value)}
+              onChange={(e) => handleBulkTextChange(e.target.value)}
               className="w-full text-sm p-3.5 border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-55 dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-4 focus:ring-indigo-500/15 h-36 font-semibold"
             />
           </div>
 
-          <div className="flex justify-end gap-2.5">
+          {/* Interactive Live Preview and Setup List - Matches perfect with User's Photo Attachment */}
+          {parsedStudents.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1.5 mt-2">
+                <span>៣. ពិនិត្យ និងកែសម្រួលព័ត៌មានលម្អិត ({parsedStudents.length} នាក់)</span>
+              </h4>
+              
+              <div className="space-y-3 max-h-[380px] overflow-y-auto p-3.5 border border-slate-150 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-950/40">
+                {parsedStudents.map((item, i) => (
+                  <div 
+                    key={i} 
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-850 p-2.5 rounded-2xl shadow-sm transition-all"
+                  >
+                    {/* Index Indicator */}
+                    <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] font-black text-slate-400 dark:text-slate-500 flex items-center justify-center shrink-0 select-none">
+                      {i + 1}
+                    </div>
+
+                    {/* Student Name Input */}
+                    <input
+                      type="text"
+                      required
+                      placeholder="ឈ្មោះសិស្ស..."
+                      value={item.name}
+                      onChange={(e) => handleUpdateParsedStudent(i, { name: e.target.value })}
+                      className="flex-1 h-9.5 px-4 border border-slate-200 dark:border-slate-800/85 rounded-2xl bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 text-sm font-bold focus:outline-none focus:ring-3 focus:ring-indigo-500/10 focus:border-indigo-500"
+                    />
+
+                    {/* Gender Select Dropdown */}
+                    <select
+                      value={item.gender}
+                      onChange={(e) => handleUpdateParsedStudent(i, { gender: e.target.value as 'ប្រុស' | 'ស្រី' })}
+                      className="h-9.5 px-3 border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 text-xs font-black cursor-pointer focus:outline-none focus:border-indigo-500 w-24 shrink-0"
+                    >
+                      <option value="ប្រុស">ប្រុស</option>
+                      <option value="ស្រី">ស្រី</option>
+                    </select>
+
+                    {/* Status Select Dropdown */}
+                    <select
+                      value={item.status}
+                      onChange={(e) => handleUpdateParsedStudent(i, { status: e.target.value as any })}
+                      className="h-9.5 px-3 border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 text-xs font-black cursor-pointer focus:outline-none focus:border-indigo-500 w-36 shrink-0"
+                    >
+                      <option value="ឆ្នើម">ឆ្នើម</option>
+                      <option value="សកម្ម">សកម្ម</option>
+                      <option value="កំពុងរីកចម្រើន">កំពុងរីកចម្រើន</option>
+                      <option value="គួរឲ្យបារម្ភ">គួរឲ្យបារម្ភ</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2.5 pb-1 border-t border-slate-100 dark:border-slate-800 pt-4">
             <button
               type="button"
-              onClick={() => setShowBulkForm(false)}
+              onClick={() => {
+                setBulkTextInput('');
+                setParsedStudents([]);
+                setShowBulkForm(false);
+              }}
               className="px-5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-350 rounded-2xl text-xs font-bold transition-all"
             >
               បោះបង់

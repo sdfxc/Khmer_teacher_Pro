@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Key, School, BookOpen, UserPlus, LogIn, CheckCircle } from 'lucide-react';
+import { X, User, Key, School, BookOpen, UserPlus, LogIn, CheckCircle, Loader2 } from 'lucide-react';
 import { TeacherAccount } from '../types';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 interface TeacherAuthModalProps {
   isOpen: boolean;
@@ -11,10 +13,12 @@ interface TeacherAuthModalProps {
 
 export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: TeacherAuthModalProps) {
   const [isLoginView, setIsLoginView] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   
   // Login fields
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   
   // Register fields
   const [regName, setRegName] = useState('');
@@ -22,6 +26,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
   const [regSubject, setRegSubject] = useState('');
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
   
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -30,86 +35,116 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
   useEffect(() => {
     setErrorMsg('');
     setSuccessMsg('');
+    setIsLoading(false);
+    setShowLoginPassword(false);
+    setShowRegPassword(false);
   }, [isLoginView]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setIsLoading(true);
     
     if (!loginUsername.trim() || !loginPassword.trim()) {
       setErrorMsg('សូមបំពេញឈ្មោះគណនី និងលេខសម្ងាត់ឱ្យបានត្រឹមត្រូវ។');
+      setIsLoading(false);
       return;
     }
 
-    const savedAccountsRaw = localStorage.getItem('teacher_accounts_list');
-    const accounts: TeacherAccount[] = savedAccountsRaw ? JSON.parse(savedAccountsRaw) : [];
+    const cleanUsername = loginUsername.trim().toLowerCase();
 
-    const found = accounts.find(
-      (a) => a.username.toLowerCase() === loginUsername.trim().toLowerCase() && a.password === loginPassword
-    );
+    try {
+      // 1. Fetch teacher from cloud Firestore
+      const teacherDocRef = doc(db, 'teachers', cleanUsername);
+      const teacherSnap = await getDoc(teacherDocRef);
 
-    if (found) {
-      localStorage.setItem('logged_in_teacher', JSON.stringify(found));
-      onLoginSuccess(found);
-      setSuccessMsg('ការចូលប្រើប្រាស់ជោគជ័យ!');
-      setTimeout(() => {
-        onClose();
-        // Clear forms
-        setLoginUsername('');
-        setLoginPassword('');
-      }, 1000);
-    } else {
-      setErrorMsg('ឈ្មោះគណនី ឬលេខសម្ងាត់មិនត្រឹមត្រូវឡើយ។ សូមព្យាយាមម្ដងទៀត!');
+      if (!teacherSnap.exists()) {
+        setErrorMsg('រកមិនឃើញគណនីនេះក្នុងប្រព័ន្ធឡើយ។ សូមពិនិត្យឈ្មោះម្តងទៀត!');
+        setIsLoading(false);
+        return;
+      }
+
+      const found = teacherSnap.data() as TeacherAccount;
+
+      // 2. Validate password
+      if (found.password === loginPassword) {
+        localStorage.setItem('logged_in_teacher', JSON.stringify(found));
+        onLoginSuccess(found);
+        setSuccessMsg('ការចូលប្រើប្រាស់ជោគជ័យ និងបានទាញយកទិន្នន័យពី Cloud!');
+        setTimeout(() => {
+          onClose();
+          // Clear forms
+          setLoginUsername('');
+          setLoginPassword('');
+          setIsLoading(false);
+        }, 1200);
+      } else {
+        setErrorMsg('លេខសម្ងាត់មិនត្រឹមត្រូវឡើយ។ សូមព្យាយាមម្ដងទៀត!');
+        setIsLoading(false);
+      }
+    } catch (err) {
+      setErrorMsg('មានបញ្ហាភ្ជាប់ទៅកាន់ Cloud internet ។');
+      setIsLoading(false);
+      handleFirestoreError(err, OperationType.GET, `teachers/${cleanUsername}`);
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setIsLoading(true);
     
     if (!regName.trim() || !regSchool.trim() || !regUsername.trim() || !regPassword.trim()) {
       setErrorMsg('សូមបំពេញព័ត៌មានកាតព្វកិច្ច (*) ទាំងអស់ឱ្យបានត្រឹមត្រូវ។');
+      setIsLoading(false);
       return;
     }
 
-    const savedAccountsRaw = localStorage.getItem('teacher_accounts_list');
-    const accounts: TeacherAccount[] = savedAccountsRaw ? JSON.parse(savedAccountsRaw) : [];
+    const cleanUsername = regUsername.trim().toLowerCase();
 
-    // Check pre-existing username
-    const usernameExists = accounts.some(
-      (a) => a.username.toLowerCase() === regUsername.trim().toLowerCase()
-    );
+    try {
+      // 1. Check if username exists on Firestore cloud
+      const teacherDocRef = doc(db, 'teachers', cleanUsername);
+      const teacherSnap = await getDoc(teacherDocRef);
 
-    if (usernameExists) {
-      setErrorMsg('ឈ្មោះគណនីនេះមានរួចហើយ។ សូមជ្រើសរើសឈ្មោះគណនីផ្សេង!');
-      return;
+      if (teacherSnap.exists()) {
+        setErrorMsg('ឈ្មោះគណនីនេះមានរួចហើយនៅលើ Cloud។ សូមជ្រើសរើសឈ្មោះគណនីផ្សេង!');
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Create new teacher entity
+      const newTeacher: TeacherAccount = {
+        id: cleanUsername, // Use lowercase username as the cloud ID
+        name: regName.trim(),
+        schoolName: regSchool.trim(),
+        subjects: regSubject.trim(),
+        username: regUsername.trim(),
+        password: regPassword
+      };
+
+      // 3. Write to Firestore cloud
+      await setDoc(teacherDocRef, newTeacher);
+
+      localStorage.setItem('logged_in_teacher', JSON.stringify(newTeacher));
+      onLoginSuccess(newTeacher);
+      setSuccessMsg('បង្កើតគណនេយ្យគ្រូបង្រៀននៅលើ Cloud និងចូលប្រើប្រាស់ជោគជ័យ!');
+      
+      setTimeout(() => {
+        onClose();
+        // Clear forms
+        setRegName('');
+        setRegSchool('');
+        setRegSubject('');
+        setRegUsername('');
+        setRegPassword('');
+        setIsLoading(false);
+      }, 1500);
+    } catch (err) {
+      setErrorMsg('ការចុះឈ្មោះបរាជ័យ សូមពិនិត្យការតភ្ជាប់អ៊ីនធឺណិត។');
+      setIsLoading(false);
+      handleFirestoreError(err, OperationType.CREATE, `teachers/${cleanUsername}`);
     }
-
-    const newTeacher: TeacherAccount = {
-      id: `t-${Date.now()}`,
-      name: regName.trim(),
-      schoolName: regSchool.trim(),
-      subjects: regSubject.trim(),
-      username: regUsername.trim(),
-      password: regPassword
-    };
-
-    const updated = [...accounts, newTeacher];
-    localStorage.setItem('teacher_accounts_list', JSON.stringify(updated));
-    localStorage.setItem('logged_in_teacher', JSON.stringify(newTeacher));
-    
-    onLoginSuccess(newTeacher);
-    setSuccessMsg('បង្កើតគណនេយ្យគ្រូបង្រៀនបានជោគជ័យ និងចូលប្រើប្រាស់រួចរាល់!');
-    
-    setTimeout(() => {
-      onClose();
-      // Clear forms
-      setRegName('');
-      setRegSchool('');
-      setRegSubject('');
-      setRegUsername('');
-      setRegPassword('');
-    }, 1500);
   };
 
   return (
@@ -143,7 +178,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                     {isLoginView ? 'ចូលប្រើប្រាស់គណនីគ្រូ' : 'បង្កើតគណនេយ្យគ្រូបង្រៀន'}
                   </h2>
                   <p className="text-[10px] text-indigo-100 uppercase tracking-widest font-bold">
-                    Khmer Teacher Pro Auth
+                    Teacher EduSpin Auth
                   </p>
                 </div>
               </div>
@@ -199,22 +234,35 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                     <div className="relative">
                       <Key className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                       <input
-                        type="password"
+                        type={showLoginPassword ? "text" : "password"}
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+                        className="w-full pl-10 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                         required
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute right-3.5 top-2 hover:bg-slate-100 p-1 rounded-lg transition-transform text-xl select-none active:scale-90"
+                        title={showLoginPassword ? "លាក់លេខសម្ងាត់" : "បង្ហាញលេខសម្ងាត់"}
+                      >
+                        {showLoginPassword ? '🙈' : '🙉'}
+                      </button>
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 active:scale-95"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 active:scale-95 disabled:opacity-50"
                   >
-                    <LogIn className="w-4 h-4" />
-                    ចូលប្រើប្រាស់ឥឡូវនេះ
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <LogIn className="w-4 h-4" />
+                    )}
+                    {isLoading ? 'កំពុងភ្ជាប់ទៅប្រព័ន្ធ...' : 'ចូលប្រើប្រាស់ឥឡូវនេះ'}
                   </button>
 
                   <div className="text-center mt-6">
@@ -307,25 +355,38 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                       លេខសម្ងាត់សម្រាប់ឡុកអ៊ីន *
                     </label>
                     <div className="relative">
-                      <Key className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                      <Key className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
                       <input
-                        type="password"
+                        type={showRegPassword ? "text" : "password"}
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
                         placeholder="យ៉ាងតិច ៤ តួអក្សរ"
-                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+                        className="w-full pl-10 pr-12 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                         required
                         minLength={4}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword(!showRegPassword)}
+                        className="absolute right-3.5 top-1.5 hover:bg-slate-100 p-1 rounded-lg transition-transform text-xl select-none active:scale-90"
+                        title={showRegPassword ? "លាក់លេខសម្ងាត់" : "បង្ហាញលេខសម្ងាត់"}
+                      >
+                        {showRegPassword ? '🙈' : '🙉'}
+                      </button>
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 active:scale-95 mt-2"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 active:scale-95 mt-2 disabled:opacity-50"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    ចុះឈ្មោះគ្រូ និងចូលប្រើ
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                    {isLoading ? 'កំពុងបង្កើតគណនីរក្សាទុក...' : 'ចុះឈ្មោះគ្រូ និងចូលប្រើ'}
                   </button>
 
                   <div className="text-center mt-4">
@@ -345,7 +406,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
             </div>
             
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-center text-[11px] text-slate-400">
-              រក្សាទុកដោយមានសុវត្ថិភាពខ្ពស់ក្នុងកម្មវិធីរុករករបស់អ្នក (Local Storage)
+              រក្សាទុកដោយមានសុវត្ថិភាពខ្ពស់នៅលើ Cloud Internet សម្រាប់គ្រប់ឧបករណ៍ទាំងអស់
             </div>
           </motion.div>
         </div>
