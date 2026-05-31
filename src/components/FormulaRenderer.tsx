@@ -1,0 +1,166 @@
+import React from "react";
+
+// Standard Replacements for LaTeX symbol macros to Unicode representations
+const SYMBOL_MAP: Record<string, string> = {
+  "\\\\pm": "±",
+  "\\\\times": "×",
+  "\\\\div": "÷",
+  "\\\\rightarrow": "→",
+  "\\\\Delta": "Δ",
+  "\\\\delta": "δ",
+  "\\\\pi": "π",
+  "\\\\alpha": "α",
+  "\\\\beta": "β",
+  "\\\\gamma": "γ",
+  "\\\\theta": "θ",
+  "\\\\omega": "ω",
+  "\\\\lambda": "λ",
+  "\\\\mu": "μ",
+  "\\\\phi": "φ",
+  "\\\\sigma": "σ",
+  "\\\\rho": "ρ",
+  "\\\\tau": "τ",
+  "\\\\le": "≤",
+  "\\\\leq": "≤",
+  "\\\\ge": "≥",
+  "\\\\geq": "≥",
+  "\\\\neq": "≠",
+  "\\\\approx": "≈",
+  "\\\\infty": "∞",
+  "\\\\cdot": "·",
+  "->": "→",
+  "-->": "→"
+};
+
+/**
+ * Preprocesses a mathematical/chemical formula string to clean up symbols.
+ */
+export function preprocessText(text: string): string {
+  if (!text) return "";
+  let processed = text;
+  
+  // Replace symbolic representations in the map
+  Object.entries(SYMBOL_MAP).forEach(([pattern, replacement]) => {
+    const regex = new RegExp(pattern, "g");
+    processed = processed.replace(regex, replacement);
+  });
+
+  // Replace multiplication asterisk (*) with nice centered mathematical dot operator (·)
+  // Example: m * g -> m · g
+  processed = processed.replace(/\s*\*\s*/g, " · ");
+
+  // Replace slash ( / ) surrounded by spaces with standard division symbol (÷)
+  // Example: m / g -> m ÷ g, while leaving m/g intact or clean inline
+  processed = processed.replace(/\s+\/\s+/g, " ÷ ");
+
+  // Auto-subscript chemical formulas like CO2, H2O, C6H12O6, H2SO4, CaCO3, NaCl (no subscript for NaCl but elements correctly matched)
+  // Capital letter + optional lowercase letter followed by numbers
+  // Matches H2, O2, C6, H12, O6, Na2, SO4, H2SO4, CaCO3
+  // Keep English chemical words styled correctly
+  processed = processed.replace(/([A-Z][a-z]*)(\d+)/g, "$1<sub>$2</sub>");
+
+  return processed;
+}
+
+/**
+ * Parse a standard math/science text into a hierarchy of React elements.
+ * Handles subscripts, superscripts, root symbols, and fractions.
+ */
+export function parseFormulaToJSX(text: string): React.ReactNode {
+  if (!text) return "";
+
+  // Render sub and sup tags efficiently, handling optional braces
+  // Preprocess symbols and chemistry
+  let htmlText = preprocessText(text);
+
+  // 1. Handle fractions: \frac{num}{den}
+  // Standard LaTeX fractions can be nested, but we support single or double level nicely
+  // We'll replace \frac{A}{B} with custom HTML templates containing attributes and parse them
+  const fracRegex = /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g;
+  while (htmlText.match(fracRegex)) {
+    htmlText = htmlText.replace(fracRegex, (match, num, den) => {
+      return `<span class="math-fraction"><span class="math-numerator">${num}</span><span class="math-denominator">${den}</span></span>`;
+    });
+  }
+
+  // 2. Handle square roots: \sqrt{A}
+  const sqrtRegex = /\\sqrt\s*\{([^{}]+)\}/g;
+  while (htmlText.match(sqrtRegex)) {
+    htmlText = htmlText.replace(sqrtRegex, (match, inner) => {
+      return `<span class="math-sqrt"><span class="math-sqrt-radical">√</span><span class="math-sqrt-inner">${inner}</span></span>`;
+    });
+  }
+
+  // 3. Handle curly braces subscripts & superscripts ^{A} / _{A}
+  htmlText = htmlText.replace(/\^\{([^}]+)\}/g, "<sup>$1</sup>");
+  htmlText = htmlText.replace(/_\{([^}]+)\}/g, "<sub>$1</sub>");
+
+  // 4. Handle simple subscripts & superscripts like x^2, x_i (excluding existing sub/sup tags or HTML tags)
+  // Match single letters or digits following ^ or _
+  // Avoid replacing if it is already part of an HTML tag or attributes
+  htmlText = htmlText.replace(/\^([0-9a-zA-Z+\-≈=#*]+)(?![^<]*>)/g, "<sup>$1</sup>");
+  htmlText = htmlText.replace(/_([0-9a-zA-Z\-]+)(?![^<]*>)/g, "<sub>$1</sub>");
+
+  // Create standard inline markup dynamically with React's dangerouslySetInnerHTML is easiest and most robust
+  // for mixed regex outputs. Let's wrap inside standard styles.
+  return (
+    <span 
+      className="inline-math-container select-text"
+      dangerouslySetInnerHTML={{ __html: htmlText }}
+    />
+  );
+}
+
+/**
+ * Renders mathematical formulas in clean, raw, inline-styled Word-compatible HTML.
+ * Used when generating Microsoft Word .doc documents.
+ * MS Word supports simple tables for fractions, <sub> and <sup> for chemical indexes and powers, and basic styling.
+ */
+export function renderFormulaToHtml(text: string): string {
+  if (!text) return "";
+
+  let htmlText = preprocessText(text);
+
+  // 1. Convert Word fractions which render perfectly as tiny tables with display:inline-table
+  const fracRegex = /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g;
+  while (htmlText.match(fracRegex)) {
+    htmlText = htmlText.replace(fracRegex, (match, num, den) => {
+      // Clean up the numerator/denominator using recursion if needed
+      const cleanNum = renderFormulaToHtml(num);
+      const cleanDen = renderFormulaToHtml(den);
+      return `<table class="word-fraction-table" style="display: inline-table; border-collapse: collapse; vertical-align: middle; text-align: center; margin: 0 3px; font-size: 85%;"><tr><td style="border-bottom: 1px solid #000000; padding: 0 3px; font-weight: bold;">${cleanNum}</td></tr><tr><td style="padding: 0 3px; font-weight: bold;">${cleanDen}</td></tr></table>`;
+    });
+  }
+
+  // 2. Convert Square root to Word compatible look
+  const sqrtRegex = /\\sqrt\s*\{([^{}]+)\}/g;
+  while (htmlText.match(sqrtRegex)) {
+    htmlText = htmlText.replace(sqrtRegex, (match, inner) => {
+      const cleanInner = renderFormulaToHtml(inner);
+      return `<span style="font-family: 'Arial', sans-serif;">√</span><span style="border-top: 1px solid #000000; padding-top: 1px; display: inline-block;">${cleanInner}</span>`;
+    });
+  }
+
+  // 3. Curly brackets subscripts & superscripts
+  htmlText = htmlText.replace(/\^\{([^}]+)\}/g, "<sup>$1</sup>");
+  htmlText = htmlText.replace(/_\{([^}]+)\}/g, "<sub>$1</sub>");
+
+  // 4. Simple power indices
+  htmlText = htmlText.replace(/\^([0-9a-zA-Z+\-≈=#*]+)(?![^<]*>)/g, "<sup>$1</sup>");
+  htmlText = htmlText.replace(/_([0-9a-zA-Z\-]+)(?![^<]*>)/g, "<sub>$1</sub>");
+
+  return htmlText;
+}
+
+/**
+ * React Component for Rendering mathematical & chemistry equations beautifully.
+ */
+interface FormulaRendererProps {
+  text: string;
+}
+
+export const FormulaRenderer: React.FC<FormulaRendererProps> = ({ text }) => {
+  return <>{parseFormulaToJSX(text)}</>;
+};
+
+export default FormulaRenderer;

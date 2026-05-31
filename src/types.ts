@@ -23,6 +23,21 @@ export interface QuizCard {
   status: 'idle' | 'correct' | 'wrong';
 }
 
+export interface QuizRoom {
+  id: string;
+  name: string;
+  cards: QuizCard[];
+  pickedIds: string[];
+  createdAt: number;
+}
+
+export interface QuizChapter {
+  id: string;
+  name: string;
+  rooms: QuizRoom[];
+  createdAt: number;
+}
+
 export interface ClassInfo {
   id: string;
   name: string;

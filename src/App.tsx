@@ -12,7 +12,7 @@ import TeacherAuthModal from './components/TeacherAuthModal';
 import SpinningWheel from './components/SpinningWheel';
 import GroupDivider from './components/GroupDivider';
 import StudentManager from './components/StudentManager';
-import { Student, Question, QuizCard, ClassInfo, TeacherAccount } from './types';
+import { Student, Question, QuizCard, ClassInfo, TeacherAccount, QuizRoom, QuizChapter } from './types';
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 
@@ -61,6 +61,9 @@ export default function App() {
     const saved = localStorage.getItem(`picked_students_class_${activeId}`);
     return saved ? JSON.parse(saved) : [];
   });
+
+  const [chapters, setChapters] = useState<QuizChapter[]>([]);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -148,11 +151,76 @@ export default function App() {
       const loadedStudents = localStorage.getItem(`students_class_${activeClassId}`);
       setStudents(loadedStudents ? JSON.parse(loadedStudents) : []);
 
-      const loadedCards = localStorage.getItem(`quiz_cards_class_${activeClassId}`);
-      setCards(loadedCards ? JSON.parse(loadedCards) : []);
+      const loadedChaptersStr = localStorage.getItem(`chapters_class_${activeClassId}`);
+      let loadedChapters: QuizChapter[] = [];
+      let loadedActiveRoomId: string | null = null;
 
-      const loadedPicked = localStorage.getItem(`picked_students_class_${activeClassId}`);
-      setPickedIds(loadedPicked ? JSON.parse(loadedPicked) : []);
+      if (loadedChaptersStr) {
+        loadedChapters = JSON.parse(loadedChaptersStr);
+        loadedActiveRoomId = localStorage.getItem(`active_room_id_${activeClassId}`);
+        // Ensure accurate active roomId
+        if (!loadedActiveRoomId && loadedChapters.length > 0) {
+          loadedActiveRoomId = loadedChapters[0].rooms[0]?.id || null;
+        }
+      } else {
+        // Try migrating from legacy rooms
+        const loadedRoomsStr = localStorage.getItem(`rooms_class_${activeClassId}`);
+        if (loadedRoomsStr) {
+          const loadedRooms: QuizRoom[] = JSON.parse(loadedRoomsStr);
+          const defaultChapter: QuizChapter = {
+            id: `chapter-default-${Date.now()}`,
+            name: 'ជំពូកទី១',
+            rooms: loadedRooms,
+            createdAt: Date.now()
+          };
+          loadedChapters = [defaultChapter];
+          loadedActiveRoomId = localStorage.getItem(`active_room_id_${activeClassId}`) || loadedRooms[0]?.id;
+        } else {
+          // Migration of legacy cards data
+          const legacyCardsStr = localStorage.getItem(`quiz_cards_class_${activeClassId}`);
+          const legacyPickedStr = localStorage.getItem(`picked_students_class_${activeClassId}`);
+          const legacyCards = legacyCardsStr ? JSON.parse(legacyCardsStr) : [];
+          const legacyPicked = legacyPickedStr ? JSON.parse(legacyPickedStr) : [];
+
+          const defaultRoom: QuizRoom = {
+            id: `room-default-${Date.now()}`,
+            name: 'មេរៀនទី១',
+            cards: legacyCards,
+            pickedIds: legacyPicked,
+            createdAt: Date.now()
+          };
+          const defaultChapter: QuizChapter = {
+            id: `chapter-default-${Date.now()}`,
+            name: 'ជំពូកទី១',
+            rooms: [defaultRoom],
+            createdAt: Date.now()
+          };
+          loadedChapters = [defaultChapter];
+          loadedActiveRoomId = defaultRoom.id;
+        }
+        
+        // Save initial migrated chapters
+        localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(loadedChapters));
+        if (loadedActiveRoomId) {
+          localStorage.setItem(`active_room_id_${activeClassId}`, loadedActiveRoomId);
+        }
+      }
+
+      setChapters(loadedChapters);
+      setActiveRoomId(loadedActiveRoomId);
+
+      // Find the active room in any chapter
+      let activeRoom: QuizRoom | undefined;
+      for (const ch of loadedChapters) {
+        activeRoom = ch.rooms.find(r => r.id === loadedActiveRoomId);
+        if (activeRoom) break;
+      }
+      if (!activeRoom && loadedChapters.length > 0) {
+        activeRoom = loadedChapters[0].rooms[0];
+      }
+
+      setCards(activeRoom?.cards || []);
+      setPickedIds(activeRoom?.pickedIds || []);
       return;
     }
 
@@ -164,14 +232,77 @@ export default function App() {
         const classDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId);
         const classSnap = await getDoc(classDocRef);
         
+        let loadedChapters: QuizChapter[] = [];
+        let loadedActiveRoomId: string | null = null;
+
         if (classSnap.exists()) {
           const classData = classSnap.data();
-          setCards(classData.cards || []);
-          setPickedIds(classData.pickedIds || []);
+          if (classData.chapters && classData.chapters.length > 0) {
+            loadedChapters = classData.chapters;
+            loadedActiveRoomId = classData.activeRoomId || loadedChapters[0].rooms[0]?.id || null;
+          } else if (classData.rooms && classData.rooms.length > 0) {
+            // Migrating legacy rooms representation
+            const defaultChapter: QuizChapter = {
+              id: `chapter-default-${Date.now()}`,
+              name: 'ជំពូកទី១',
+              rooms: classData.rooms,
+              createdAt: Date.now()
+            };
+            loadedChapters = [defaultChapter];
+            loadedActiveRoomId = classData.activeRoomId || classData.rooms[0].id;
+          } else {
+            // Migrating legacy struct
+            const legacyCards = classData.cards || [];
+            const legacyPicked = classData.pickedIds || [];
+            const defaultRoom: QuizRoom = {
+              id: `room-default-${Date.now()}`,
+              name: 'មេរៀនទី១',
+              cards: legacyCards,
+              pickedIds: legacyPicked,
+              createdAt: Date.now()
+            };
+            const defaultChapter: QuizChapter = {
+              id: `chapter-default-${Date.now()}`,
+              name: 'ជំពូកទី១',
+              rooms: [defaultRoom],
+              createdAt: Date.now()
+            };
+            loadedChapters = [defaultChapter];
+            loadedActiveRoomId = defaultRoom.id;
+          }
         } else {
-          setCards([]);
-          setPickedIds([]);
+          // Empty or new class
+          const defaultRoom: QuizRoom = {
+            id: `room-default-${Date.now()}`,
+            name: 'មេរៀនទី១',
+            cards: [],
+            pickedIds: [],
+            createdAt: Date.now()
+          };
+          const defaultChapter: QuizChapter = {
+            id: `chapter-default-${Date.now()}`,
+            name: 'ជំពូកទី១',
+            rooms: [defaultRoom],
+            createdAt: Date.now()
+          };
+          loadedChapters = [defaultChapter];
+          loadedActiveRoomId = defaultRoom.id;
         }
+
+        setChapters(loadedChapters);
+        setActiveRoomId(loadedActiveRoomId);
+
+        let activeRoom: QuizRoom | undefined;
+        for (const ch of loadedChapters) {
+          activeRoom = ch.rooms.find(r => r.id === loadedActiveRoomId);
+          if (activeRoom) break;
+        }
+        if (!activeRoom && loadedChapters.length > 0) {
+          activeRoom = loadedChapters[0].rooms[0];
+        }
+
+        setCards(activeRoom?.cards || []);
+        setPickedIds(activeRoom?.pickedIds || []);
 
         // 2. Fetch students
         const studentsCollRef = collection(db, 'teachers', teacher.id, 'classes', activeClassId, 'students');
@@ -219,17 +350,38 @@ export default function App() {
 
   // Helper to save class-level states to Firestore
   const saveClassMetadata = useCallback(async (updatedCards: QuizCard[], updatedPickedIds: string[]) => {
+    if (!activeRoomId) return;
+
+    const updatedChapters = chapters.map(ch => {
+      const updatedRooms = ch.rooms.map(r => {
+        if (r.id === activeRoomId) {
+          return {
+            ...r,
+            cards: updatedCards,
+            pickedIds: updatedPickedIds
+          };
+        }
+        return r;
+      });
+      return { ...ch, rooms: updatedRooms };
+    });
+
+    setChapters(updatedChapters);
+
     if (teacher && activeClassId) {
       try {
         await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
-          cards: updatedCards,
-          pickedIds: updatedPickedIds
+          chapters: updatedChapters,
+          activeRoomId: activeRoomId
         }, { merge: true });
       } catch (err) {
         console.error('Failed to save class metadata to cloud:', err);
       }
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+      localStorage.setItem(`active_room_id_${activeClassId}`, activeRoomId);
     }
-  }, [teacher, activeClassId]);
+  }, [teacher, activeClassId, activeRoomId, chapters]);
 
   // Helper to save student score updates to Firestore
   const saveStudentScore = useCallback(async (studentId: string, newScore: number) => {
@@ -243,6 +395,230 @@ export default function App() {
       }
     }
   }, [teacher, activeClassId]);
+
+  const handleSelectRoom = useCallback((roomId: string) => {
+    setActiveRoomId(roomId);
+    let selectedRoom: QuizRoom | undefined;
+    for (const ch of chapters) {
+      selectedRoom = ch.rooms.find(r => r.id === roomId);
+      if (selectedRoom) break;
+    }
+
+    if (selectedRoom) {
+      setCards(selectedRoom.cards || []);
+      setPickedIds(selectedRoom.pickedIds || []);
+      if (!teacher && activeClassId) {
+        localStorage.setItem(`active_room_id_${activeClassId}`, roomId);
+      } else if (teacher && activeClassId) {
+        setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+          activeRoomId: roomId
+        }, { merge: true }).catch(err => console.error('Failed to sync activeRoomId:', err));
+      }
+    }
+  }, [chapters, teacher, activeClassId]);
+
+  const handleCreateRoom = useCallback((chapterId: string, roomName: string) => {
+    const newRoom: QuizRoom = {
+      id: `room-${Date.now()}`,
+      name: roomName,
+      cards: [],
+      pickedIds: [],
+      createdAt: Date.now()
+    };
+    
+    const updatedChapters = chapters.map(ch => {
+      if (ch.id === chapterId) {
+        return {
+          ...ch,
+          rooms: [...ch.rooms, newRoom]
+        };
+      }
+      return ch;
+    });
+
+    setChapters(updatedChapters);
+    setActiveRoomId(newRoom.id);
+    setCards([]);
+    setPickedIds([]);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters,
+        activeRoomId: newRoom.id
+      }, { merge: true }).catch(err => console.error('Failed to save new room to cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+      localStorage.setItem(`active_room_id_${activeClassId}`, newRoom.id);
+    }
+  }, [chapters, teacher, activeClassId]);
+
+  const handleDeleteRoom = useCallback((roomId: string) => {
+    const totalRooms = chapters.reduce((total, ch) => total + ch.rooms.length, 0);
+    if (totalRooms <= 1) {
+      alert('មិនអាចលុបបន្ទប់ទាំងអស់គ្រាប់បានទេ! ត្រូវតែមានយ៉ាងហោចណាស់បន្ទប់មួយនៅក្នុងជំពូកណាមួយ។');
+      return;
+    }
+    if (!window.confirm('តើអ្នកពិតជាចង់លុបបន្ទប់ក្ដារសំណួរនេះមែនទេ?​​ រាល់សំណួរនៅក្នុងបន្ទប់នេះនឹងត្រូវបាត់បង់ទាំងអស់។')) {
+      return;
+    }
+
+    const updatedChapters = chapters.map(ch => {
+      return {
+        ...ch,
+        rooms: ch.rooms.filter(r => r.id !== roomId)
+      };
+    });
+
+    let nextActiveId = activeRoomId;
+    if (activeRoomId === roomId) {
+      let foundRoom = false;
+      for (const ch of updatedChapters) {
+        if (ch.rooms.length > 0) {
+          nextActiveId = ch.rooms[0].id;
+          setCards(ch.rooms[0].cards || []);
+          setPickedIds(ch.rooms[0].pickedIds || []);
+          foundRoom = true;
+          break;
+        }
+      }
+      if (!foundRoom) {
+        nextActiveId = null;
+        setCards([]);
+        setPickedIds([]);
+      }
+    }
+
+    setChapters(updatedChapters);
+    setActiveRoomId(nextActiveId);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters,
+        activeRoomId: nextActiveId
+      }, { merge: true }).catch(err => console.error('Failed to sync room deletion to cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+      if (nextActiveId) {
+        localStorage.setItem(`active_room_id_${activeClassId}`, nextActiveId);
+      } else {
+        localStorage.removeItem(`active_room_id_${activeClassId}`);
+      }
+    }
+  }, [chapters, activeRoomId, teacher, activeClassId]);
+
+  const handleRenameRoom = useCallback((roomId: string, newName: string) => {
+    const updatedChapters = chapters.map(ch => {
+      const updatedRooms = ch.rooms.map(r => {
+        if (r.id === roomId) {
+          return { ...r, name: newName };
+        }
+        return r;
+      });
+      return { ...ch, rooms: updatedRooms };
+    });
+
+    setChapters(updatedChapters);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters
+      }, { merge: true }).catch(err => console.error('Failed to rename room in cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+    }
+  }, [chapters, teacher, activeClassId]);
+
+  const handleCreateChapter = useCallback((chapterName: string) => {
+    const newChapter: QuizChapter = {
+      id: `chapter-${Date.now()}`,
+      name: chapterName,
+      rooms: [],
+      createdAt: Date.now()
+    };
+    const updatedChapters = [...chapters, newChapter];
+    setChapters(updatedChapters);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters
+      }, { merge: true }).catch(err => console.error('Failed to create chapter in cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+    }
+  }, [chapters, teacher, activeClassId]);
+
+  const handleRenameChapter = useCallback((chapterId: string, newName: string) => {
+    const updatedChapters = chapters.map(ch => {
+      if (ch.id === chapterId) {
+        return { ...ch, name: newName };
+      }
+      return ch;
+    });
+    setChapters(updatedChapters);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters
+      }, { merge: true }).catch(err => console.error('Failed to rename chapter in cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+    }
+  }, [chapters, teacher, activeClassId]);
+
+  const handleDeleteChapter = useCallback((chapterId: string) => {
+    if (chapters.length <= 1) {
+      alert('មិនអាចលុបជំពូកទាំងអស់បានទេ! ត្រូវតែមានយ៉ាងហោចណាស់ជំពូកមួយ។');
+      return;
+    }
+    if (!window.confirm('តើអ្នកពិតជាចង់លុបជំពូកនេះមែនទេ? រាល់បន្ទប់ និងសំណួរទាំងអស់នៅក្នុងជំពូកនេះនឹងត្រូវបាត់បង់ទាំងស្រុងពីប្រព័ន្ធ។')) {
+      return;
+    }
+
+    const updatedChapters = chapters.filter(ch => ch.id !== chapterId);
+    setChapters(updatedChapters);
+
+    // If active room was in deleted chapter, reset active room id
+    let isDeletedActive = false;
+    const deletedChapter = chapters.find(ch => ch.id === chapterId);
+    if (deletedChapter && activeRoomId) {
+      isDeletedActive = deletedChapter.rooms.some(r => r.id === activeRoomId);
+    }
+
+    let nextActiveRoomId = activeRoomId;
+    if (isDeletedActive) {
+      let foundRoom = false;
+      for (const ch of updatedChapters) {
+        if (ch.rooms.length > 0) {
+          nextActiveRoomId = ch.rooms[0].id;
+          setCards(ch.rooms[0].cards || []);
+          setPickedIds(ch.rooms[0].pickedIds || []);
+          foundRoom = true;
+          break;
+        }
+      }
+      if (!foundRoom) {
+        nextActiveRoomId = null;
+        setCards([]);
+        setPickedIds([]);
+      }
+    }
+
+    setActiveRoomId(nextActiveRoomId);
+
+    if (teacher && activeClassId) {
+      setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId), {
+        chapters: updatedChapters,
+        activeRoomId: nextActiveRoomId
+      }, { merge: true }).catch(err => console.error('Failed to delete chapter in cloud:', err));
+    } else if (activeClassId) {
+      localStorage.setItem(`chapters_class_${activeClassId}`, JSON.stringify(updatedChapters));
+      if (nextActiveRoomId) {
+        localStorage.setItem(`active_room_id_${activeClassId}`, nextActiveRoomId);
+      } else {
+        localStorage.removeItem(`active_room_id_${activeClassId}`);
+      }
+    }
+  }, [chapters, activeRoomId, teacher, activeClassId]);
 
   // Handler for switching class
   const handleSwitchClass = (classId: string) => {
@@ -784,6 +1160,7 @@ export default function App() {
                 onAddStudent={addStudent}
                 showBulkInput={showWheelBulk}
                 setShowBulkInput={setShowWheelBulk}
+                isDarkMode={isDarkMode}
               />
             </section>
             
@@ -797,6 +1174,7 @@ export default function App() {
                 onClearStudents={clearStudents}
                 onSelectStudent={(s) => setSelectedStudentId(s.id)}
                 selectedStudent={selectedStudent}
+                isDarkMode={isDarkMode}
               />
             </aside>
           </>
@@ -814,8 +1192,12 @@ export default function App() {
                 onClearStudents={clearStudents}
                 onSelectStudent={(s) => setSelectedStudentId(s.id)}
                 selectedStudent={selectedStudent}
+                isDarkMode={isDarkMode}
               />
             </aside>
+
+            {/* Bright Orange line separator between student list and question board */}
+            <div className="w-[3px] bg-[#f97316] h-full hidden md:block shrink-0" />
 
             <section className={`flex-1 md:basis-3/5 h-full overflow-hidden flex flex-col ${
               isDarkMode ? 'bg-[#0f172a]' : 'bg-slate-50'
@@ -827,6 +1209,16 @@ export default function App() {
                 onReset={resetMatch}
                 activeCard={activeCard}
                 selectedStudent={selectedStudent}
+                chapters={chapters}
+                activeRoomId={activeRoomId}
+                onSelectRoom={handleSelectRoom}
+                onCreateRoom={handleCreateRoom}
+                onDeleteRoom={handleDeleteRoom}
+                onRenameRoom={handleRenameRoom}
+                onCreateChapter={handleCreateChapter}
+                onRenameChapter={handleRenameChapter}
+                onDeleteChapter={handleDeleteChapter}
+                isDarkMode={isDarkMode}
               />
             </section>
           </>

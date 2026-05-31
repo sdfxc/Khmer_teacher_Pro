@@ -13,6 +13,7 @@ interface SpinningWheelProps {
   onAddStudent: (name: string) => void;
   showBulkInput: boolean;
   setShowBulkInput: (val: boolean) => void;
+  isDarkMode?: boolean;
 }
 
 const PALETTE = ['#06b6d4', '#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#14b8a6', '#ef4444'];
@@ -38,8 +39,8 @@ const playHighPitchTick = () => {
     filter.frequency.setValueAtTime(480, ctx.currentTime);
     filter.Q.value = 1.8;
     
-    // Gentle amplitude (down from 3.0 to a comfortable 0.28)
-    gainNode.gain.setValueAtTime(0.28, ctx.currentTime);
+    // Gentle amplitude (increased slightly to 0.45 for better presence)
+    gainNode.gain.setValueAtTime(0.45, ctx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
     
     osc.connect(filter);
@@ -70,7 +71,8 @@ export default function SpinningWheel({
   selectedStudent,
   onAddStudent,
   showBulkInput,
-  setShowBulkInput
+  setShowBulkInput,
+  isDarkMode = false
 }: SpinningWheelProps) {
   const [rotationDegrees, setRotationDegrees] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
@@ -96,7 +98,7 @@ export default function SpinningWheel({
     applauseAudio.current.load();
 
     // Volume configuration (max is 1.0)
-    tickAudio.current.volume = 0.8;
+    tickAudio.current.volume = 1.0;
     fireworkAudio.current.volume = 1.0;
     applauseAudio.current.volume = 1.0;
 
@@ -386,7 +388,7 @@ export default function SpinningWheel({
         <motion.div
           ref={wheelRef}
           animate={controls}
-          className="w-full h-full rounded-full shadow-2xl bg-white dark:bg-slate-900 border-8 border-white dark:border-slate-850 p-1 relative overflow-hidden"
+          className="w-full h-full rounded-full shadow-2xl bg-white dark:bg-slate-900 border-8 border-white dark:border-slate-800 p-1 relative overflow-hidden"
           style={{ originX: '50%', originY: '50%' }}
         >
           <svg viewBox="0 0 400 400" className="w-full h-full overflow-visible">
@@ -400,7 +402,7 @@ export default function SpinningWheel({
           disabled={isSpinning || students.length === 0}
           className="absolute w-16 h-16 bg-white dark:bg-slate-800 rounded-full border-4 border-indigo-600 dark:border-indigo-500 shadow-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-extrabold hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-40 transition-all z-10 cursor-pointer"
         >
-          <Play className="w-8 h-8 fill-indigo-650 text-indigo-650" />
+          <Play className="w-8 h-8 fill-indigo-600 text-indigo-600" />
         </button>
       </div>
 
@@ -408,7 +410,7 @@ export default function SpinningWheel({
       <div className="flex items-center gap-3 w-full max-w-sm justify-center mb-6">
         <button
           onClick={handleShuffle}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-750 transition-all cursor-pointer shadow-sm active:scale-95"
+          className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm active:scale-95"
         >
           <Shuffle className="w-4 h-4 text-emerald-500" />
           <span>Shuffle / Re-pick</span>
@@ -416,7 +418,7 @@ export default function SpinningWheel({
 
         <button
           onClick={handleResetPicked}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-750 transition-all cursor-pointer shadow-sm active:scale-95"
+          className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm active:scale-95"
         >
           <RotateCcw className="w-4 h-4 text-indigo-500" />
           <span>Reset</span>
@@ -453,7 +455,7 @@ export default function SpinningWheel({
               </button>
               <button
                 type="submit"
-                className="px-3 py-1 bg-indigo-650 text-white rounded-lg font-bold hover:bg-indigo-700 shrink-0"
+                className="px-3 py-1 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shrink-0"
               >
                 យល់ព្រម
               </button>
