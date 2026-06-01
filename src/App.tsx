@@ -13,8 +13,10 @@ import SpinningWheel from './components/SpinningWheel';
 import GroupDivider from './components/GroupDivider';
 import StudentManager from './components/StudentManager';
 import { Student, Question, QuizCard, ClassInfo, TeacherAccount, QuizRoom, QuizChapter } from './types';
-import { collection, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
+import StudentPlayView from './components/StudentPlayView';
+import StudentLobby from './components/StudentLobby';
 
 const EMOJIS = ["🥰", "😂", "😩", "🥳", "🥺", "😇", "😎", "🤩", "🤔", "🤗", "🤭", "🫠", "😤", "😮💨", "🫡", "😬", "🙄", "🤒", "😵💫", "😳", "🤪", "😜", "🤫", "🫣", "☹️", "😕"];
 
@@ -25,7 +27,16 @@ const DEFAULT_CLASSES: ClassInfo[] = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'wheel' | 'quiz' | 'groups' | 'students'>('wheel');
+  const [studentMode] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mode') === 'student';
+  });
+
+  if (studentMode) {
+    return <StudentPlayView />;
+  }
+
+  const [activeTab, setActiveTab] = useState<'wheel' | 'quiz' | 'groups' | 'students' | 'student-lobby'>('wheel');
   const [showWheelBulk, setShowWheelBulk] = useState(false);
   const [loadingCloudData, setLoadingCloudData] = useState(false);
 
@@ -67,6 +78,12 @@ export default function App() {
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [activeCardState, setActiveCardState] = useState<'answering' | 'revealed'>('answering');
+
+  useEffect(() => {
+    setActiveCardState('answering');
+  }, [activeCardId]);
+
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
@@ -322,6 +339,45 @@ export default function App() {
 
     loadClassDetails();
   }, [activeClassId, teacher]);
+
+  // Real-time Student Synchronization for cloud sessions
+  useEffect(() => {
+    if (!teacher || !activeClassId) return;
+
+    const studentsCollRef = collection(db, 'teachers', teacher.id, 'classes', activeClassId, 'students');
+    const unsubscribe = onSnapshot(studentsCollRef, (snapshot) => {
+      let loadedStudents: Student[] = [];
+      snapshot.forEach(docSnap => {
+        loadedStudents.push(docSnap.data() as Student);
+      });
+      setStudents(loadedStudents);
+    }, (err) => {
+      console.error("Real-time snapshot error for students collection:", err);
+    });
+
+    return () => unsubscribe();
+  }, [activeClassId, teacher]);
+
+  // Sync active quiz state to Class document in Firestore for student phones
+  useEffect(() => {
+    if (!teacher || !activeClassId) return;
+
+    const syncClassInfo = async () => {
+      try {
+        const classDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId);
+        await setDoc(classDocRef, {
+          activeCardId: activeCardId,
+          activeRoomId: activeRoomId,
+          activeTab: activeTab,
+          activeCardState: activeCardState
+        }, { merge: true });
+      } catch (err) {
+        console.error("Failed to sync active state to Firestore:", err);
+      }
+    };
+
+    syncClassInfo();
+  }, [activeClassId, activeCardId, activeRoomId, activeTab, activeCardState, teacher]);
 
   // Save changes to localStorage on states update as fallback for offline use
   useEffect(() => {
@@ -835,6 +891,11 @@ export default function App() {
     saveClassMetadata(newCards, pickedIds);
   }, [pickedIds, saveClassMetadata]);
 
+  const handleUpdateCards = useCallback((updatedCards: QuizCard[]) => {
+    setCards(updatedCards);
+    saveClassMetadata(updatedCards, pickedIds);
+  }, [pickedIds, saveClassMetadata]);
+
   const handleAnswer = useCallback((correct: boolean) => {
     if (!activeCardId || !selectedStudentId) return;
 
@@ -1028,6 +1089,19 @@ export default function App() {
             <LayoutGrid className="w-4 h-4" />
             <span>ក្ដារសំណួរ</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('student-lobby')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer select-none relative overflow-hidden ${
+              activeTab === 'student-lobby'
+                ? 'bg-amber-500 text-white shadow-md shadow-amber-500/15'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-300 animate-pulse" />
+            <span>បន្ទប់សិស្ស (QR & ពាន)</span>
+            <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
+          </button>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -1219,6 +1293,7 @@ export default function App() {
                 onRenameChapter={handleRenameChapter}
                 onDeleteChapter={handleDeleteChapter}
                 isDarkMode={isDarkMode}
+                onUpdateCards={handleUpdateCards}
               />
             </section>
           </>
@@ -1273,6 +1348,22 @@ export default function App() {
               }}
             />
           </div>
+        )}
+
+        {activeTab === 'student-lobby' && (
+          <StudentLobby
+            activeClassId={activeClassId}
+            className={activeClass?.name || 'ថ្នាក់រៀន'}
+            teacher={teacher}
+            activeRoomId={activeRoomId}
+            students={students}
+            cards={cards}
+            activeCardId={activeCardId}
+            isDarkMode={isDarkMode}
+            setActiveCardId={setActiveCardId}
+            activeCardState={activeCardState}
+            setActiveCardState={setActiveCardState}
+          />
         )}
       </main>
 

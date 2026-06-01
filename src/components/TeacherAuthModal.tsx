@@ -220,7 +220,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                         type="text"
                         value={loginUsername}
                         onChange={(e) => setLoginUsername(e.target.value)}
-                        placeholder="ឧ. som_nang123"
+                        placeholder="ឧ. steve_123"
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                         required
                       />
@@ -291,7 +291,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                         type="text"
                         value={regName}
                         onChange={(e) => setRegName(e.target.value)}
-                        placeholder="ឧ. លោកគ្រូ សុខ ជា"
+                        placeholder="ឧ. លោកគ្រូ ស្ទីវ ចប"
                         className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                         required
                       />
@@ -308,7 +308,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                         type="text"
                         value={regSchool}
                         onChange={(e) => setRegSchool(e.target.value)}
-                        placeholder="ឧ. វិទ្យាល័យ ហ៊ុន សែន ភ្នំពេញ"
+                        placeholder="ឧ. សាលារៀនសុវណ្ណភូមិ សាខាផ្សារដីហុយ"
                         className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                         required
                       />
@@ -342,7 +342,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                           type="text"
                           value={regUsername}
                           onChange={(e) => setRegUsername(e.target.value)}
-                          placeholder="ឧ. sok_cheaS"
+                          placeholder="ឧ. steve_123"
                           className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                           required
                         />

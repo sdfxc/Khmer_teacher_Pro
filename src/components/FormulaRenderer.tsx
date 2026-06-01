@@ -4,7 +4,7 @@ import React from "react";
 const SYMBOL_MAP: Record<string, string> = {
   "\\\\pm": "±",
   "\\\\times": "×",
-  "\\\\div": "÷",
+  "\\\\div": " / ",
   "\\\\rightarrow": "→",
   "\\\\Delta": "Δ",
   "\\\\delta": "δ",
@@ -43,22 +43,25 @@ export function preprocessText(text: string): string {
   const shieldUrls: string[] = [];
   processed = processed.replace(/(https?:\/\/[^\s]+)/g, (match) => {
     shieldUrls.push(match);
-    return `__SELECTION_URL_SHIELD_${shieldUrls.length - 1}__`;
+    return `[shieldurl${shieldUrls.length - 1}]`;
   });
 
-  // 2. Shield Dates like 30/12/2026 or 01/02/03 to prevent replacing / with ÷
+  // 2. Shield Dates like 30/12/2026 or 01/02/03 to prevent replacing /
   const shieldDates: string[] = [];
   processed = processed.replace(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g, (match) => {
     shieldDates.push(match);
-    return `__SELECTION_DATE_SHIELD_${shieldDates.length - 1}__`;
+    return `[shielddate${shieldDates.length - 1}]`;
   });
 
   // 2.5. Shield Units of Measurement like m/s, km/h, g/mol, kg/m3 etc. to preserve the / symbol
   const shieldUnits: string[] = [];
   processed = processed.replace(/[a-zA-Z]+\/(s|s\^?[1-3]|s\^?\{[1-3]\}|h|min|mol|[Mm]|[Mm]\^?[1-3]|[Mm]\^?\{[1-3]\}|cm|cm\^?[1-3]|cm\^?\{[1-3]\}|dm|dm\^?[1-3]|dm\^?\{[1-3]\}|[Ll]|g|kg|mol)\b/g, (match) => {
     shieldUnits.push(match);
-    return `__SELECTION_UNIT_SHIELD_${shieldUnits.length - 1}__`;
+    return `[shieldunit${shieldUnits.length - 1}]`;
   });
+
+  // 2.8. Convert degree symbols \circ or ^\circ (with optional extra backslahes) to superscript o
+  processed = processed.replace(/\^?\\\\?circ\b/g, "<sup>o</sup>");
 
   // 3. Replace symbolic representations in the map
   Object.entries(SYMBOL_MAP).forEach(([pattern, replacement]) => {
@@ -76,9 +79,9 @@ export function preprocessText(text: string): string {
   processed = processed.replace(/(\d+)\s*[xX]\s*(10\^|10\{|10\b)/g, "$1 × $2");
   processed = processed.replace(/(\d+)\s*[xX]\s*(\d+)/g, "$1 × $2");
 
-  // 5. Handle division slash (/) -> convert to " ÷ "
+  // 5. Handle division slash (/) -> clean it up as " / "
   // Avoid replacing html tag closing slashes, URLs, or dates (thanks to shielding)
-  processed = processed.replace(/\s*(?<!<)\/(?![a-zA-Z0-9]*>)\s*/g, " ÷ ");
+  processed = processed.replace(/\s*(?<!<)\/(?![a-zA-Z0-9]*>)\s*/g, " / ");
 
   // 6. Support standard and LaTeX subscripts & superscripts
   // Convert ^{...} -> <sup>...</sup>
@@ -100,17 +103,17 @@ export function preprocessText(text: string): string {
 
   // 8. Restore Shielded URLs
   shieldUrls.forEach((val, idx) => {
-    processed = processed.replace(`__SELECTION_URL_SHIELD_${idx}__`, val);
+    processed = processed.replace(`[shieldurl${idx}]`, val);
   });
 
   // 9. Restore Shielded Dates
   shieldDates.forEach((val, idx) => {
-    processed = processed.replace(`__SELECTION_DATE_SHIELD_${idx}__`, val);
+    processed = processed.replace(`[shielddate${idx}]`, val);
   });
 
   // 9.5. Restore Shielded Units of Measurement
   shieldUnits.forEach((val, idx) => {
-    processed = processed.replace(`__SELECTION_UNIT_SHIELD_${idx}__`, val);
+    processed = processed.replace(`[shieldunit${idx}]`, val);
   });
 
   return processed;
