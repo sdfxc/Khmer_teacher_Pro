@@ -53,6 +53,13 @@ export function preprocessText(text: string): string {
     return `__SELECTION_DATE_SHIELD_${shieldDates.length - 1}__`;
   });
 
+  // 2.5. Shield Units of Measurement like m/s, km/h, g/mol, kg/m3 etc. to preserve the / symbol
+  const shieldUnits: string[] = [];
+  processed = processed.replace(/[a-zA-Z]+\/(s|s\^?[1-3]|s\^?\{[1-3]\}|h|min|mol|[Mm]|[Mm]\^?[1-3]|[Mm]\^?\{[1-3]\}|cm|cm\^?[1-3]|cm\^?\{[1-3]\}|dm|dm\^?[1-3]|dm\^?\{[1-3]\}|[Ll]|g|kg|mol)\b/g, (match) => {
+    shieldUnits.push(match);
+    return `__SELECTION_UNIT_SHIELD_${shieldUnits.length - 1}__`;
+  });
+
   // 3. Replace symbolic representations in the map
   Object.entries(SYMBOL_MAP).forEach(([pattern, replacement]) => {
     const regex = new RegExp(pattern, "g");
@@ -99,6 +106,11 @@ export function preprocessText(text: string): string {
   // 9. Restore Shielded Dates
   shieldDates.forEach((val, idx) => {
     processed = processed.replace(`__SELECTION_DATE_SHIELD_${idx}__`, val);
+  });
+
+  // 9.5. Restore Shielded Units of Measurement
+  shieldUnits.forEach((val, idx) => {
+    processed = processed.replace(`__SELECTION_UNIT_SHIELD_${idx}__`, val);
   });
 
   return processed;
