@@ -38,26 +38,68 @@ const SYMBOL_MAP: Record<string, string> = {
 export function preprocessText(text: string): string {
   if (!text) return "";
   let processed = text;
-  
-  // Replace symbolic representations in the map
+
+  // 1. Shield URLs first to prevent replacing / or other symbols in links
+  const shieldUrls: string[] = [];
+  processed = processed.replace(/(https?:\/\/[^\s]+)/g, (match) => {
+    shieldUrls.push(match);
+    return `__SELECTION_URL_SHIELD_${shieldUrls.length - 1}__`;
+  });
+
+  // 2. Shield Dates like 30/12/2026 or 01/02/03 to prevent replacing / with ÷
+  const shieldDates: string[] = [];
+  processed = processed.replace(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g, (match) => {
+    shieldDates.push(match);
+    return `__SELECTION_DATE_SHIELD_${shieldDates.length - 1}__`;
+  });
+
+  // 3. Replace symbolic representations in the map
   Object.entries(SYMBOL_MAP).forEach(([pattern, replacement]) => {
     const regex = new RegExp(pattern, "g");
     processed = processed.replace(regex, replacement);
   });
 
-  // Replace multiplication asterisk (*) with nice centered mathematical dot operator (·)
-  // Example: m * g -> m · g
-  processed = processed.replace(/\s*\*\s*/g, " · ");
+  // 4. Handle multiplication / times
+  // Convert times latex macro or star (*) to nice " × "
+  processed = processed.replace(/\s*\\times\s*/g, " × ");
+  processed = processed.replace(/\s*\*\s*/g, " × ");
+  
+  // Also handle plain-text " x " or " X " written as multiplication between digits
+  // E.g. "3 x 10" or "3x10" or "3 X 10"
+  processed = processed.replace(/(\d+)\s*[xX]\s*(10\^|10\{|10\b)/g, "$1 × $2");
+  processed = processed.replace(/(\d+)\s*[xX]\s*(\d+)/g, "$1 × $2");
 
-  // Replace slash ( / ) surrounded by spaces with standard division symbol (÷)
-  // Example: m / g -> m ÷ g, while leaving m/g intact or clean inline
-  processed = processed.replace(/\s+\/\s+/g, " ÷ ");
+  // 5. Handle division slash (/) -> convert to " ÷ "
+  // Avoid replacing html tag closing slashes, URLs, or dates (thanks to shielding)
+  processed = processed.replace(/\s*(?<!<)\/(?![a-zA-Z0-9]*>)\s*/g, " ÷ ");
 
-  // Auto-subscript chemical formulas like CO2, H2O, C6H12O6, H2SO4, CaCO3, NaCl (no subscript for NaCl but elements correctly matched)
-  // Capital letter + optional lowercase letter followed by numbers
-  // Matches H2, O2, C6, H12, O6, Na2, SO4, H2SO4, CaCO3
-  // Keep English chemical words styled correctly
-  processed = processed.replace(/([A-Z][a-z]*)(\d+)/g, "$1<sub>$2</sub>");
+  // 6. Support standard and LaTeX subscripts & superscripts
+  // Convert ^{...} -> <sup>...</sup>
+  processed = processed.replace(/\^\{([^}]*)\}/g, "<sup>$1</sup>");
+  // Convert _{...} -> <sub>...</sub>
+  processed = processed.replace(/_\{([^}]*)\}/g, "<sub>$1</sub>");
+
+  // Convert simple ^value -> <sup>value</sup>
+  // Matches exponents like 10^-5, x^2, e^x
+  processed = processed.replace(/\^([0-9a-zA-Z+\-≈=#*]+)/g, "<sup>$1</sup>");
+  // Convert simple _value -> <sub>value</sub>
+  // Matches variables like x_i, U_e, I_1
+  processed = processed.replace(/_([0-9a-zA-Z\x7f-\xff]+)/g, "<sub>$1</sub>");
+
+  // 7. Auto-subscript chemical formulas
+  // Matches only 1-2 character elements (Uppercase + optional lowercase) followed strictly by numbers,
+  // preventing false matches on long words (e.g. Option1).
+  processed = processed.replace(/([A-Z][a-z]?)(\d+)/g, "$1<sub>$2</sub>");
+
+  // 8. Restore Shielded URLs
+  shieldUrls.forEach((val, idx) => {
+    processed = processed.replace(`__SELECTION_URL_SHIELD_${idx}__`, val);
+  });
+
+  // 9. Restore Shielded Dates
+  shieldDates.forEach((val, idx) => {
+    processed = processed.replace(`__SELECTION_DATE_SHIELD_${idx}__`, val);
+  });
 
   return processed;
 }

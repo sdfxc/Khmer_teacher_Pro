@@ -263,41 +263,77 @@ Please thoroughly analyze all provided resource attachments (images, PDF documen
         });
       });
 
-      const directRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: parts
-              }
-            ],
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    text: { type: "STRING", description: "The question text, written in Khmer" },
-                    options: { 
-                      type: "ARRAY", 
-                      items: { type: "STRING" },
-                      description: "Exactly 4 multiple choice options, written in Khmer"
+      const fetchWithRetry = async (retriesLeft = 4, delayMs = 1500): Promise<Response> => {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: parts
+                }
+              ],
+              generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      text: { type: "STRING", description: "The question text, written in Khmer" },
+                      options: { 
+                        type: "ARRAY", 
+                        items: { type: "STRING" },
+                        description: "Exactly 4 multiple choice options, written in Khmer"
+                      },
+                      correctIndex: { type: "INTEGER", description: "The 0-based index of the correct option" }
                     },
-                    correctIndex: { type: "INTEGER", description: "The 0-based index of the correct option" }
-                  },
-                  required: ["text", "options", "correctIndex"]
+                    required: ["text", "options", "correctIndex"]
+                  }
                 }
               }
+            })
+          }
+        );
+
+        if (!res.ok) {
+          const errText = await res.clone().text().catch(() => "");
+          let isRetryable = false;
+          try {
+            const errJson = JSON.parse(errText);
+            const msg = errJson.error?.message || "";
+            if (
+              res.status === 503 ||
+              res.status === 429 ||
+              res.status === 500 ||
+              msg.includes("503") ||
+              msg.includes("UNAVAILABLE") ||
+              msg.toLowerCase().includes("overloaded") ||
+              msg.toLowerCase().includes("demand") ||
+              msg.toLowerCase().includes("temporary")
+            ) {
+              isRetryable = true;
             }
-          })
+          } catch (_) {
+            if (res.status === 503 || res.status === 429 || res.status === 500) {
+              isRetryable = true;
+            }
+          }
+
+          if (isRetryable && retriesLeft > 0) {
+            console.warn(`Direct client Gemini API returned retryable status (${res.status}). Retrying in ${delayMs}ms... (${retriesLeft} retries left)`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return fetchWithRetry(retriesLeft - 1, delayMs * 2);
+          }
         }
-      );
+        return res;
+      };
+
+      const directRes = await fetchWithRetry();
 
       if (!directRes.ok) {
         const errText = await directRes.text().catch(() => "");

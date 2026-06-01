@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { HelpCircle, Timer, CheckCircle, XCircle, Info, Trophy, AlertCircle, RotateCcw, BookOpen, Plus, Trash2, Layers, Folder, Edit3, Check, X, ChevronDown, Printer, Download, Sparkles, Settings, Eye } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Question, QuizCard, Student, QuizRoom, QuizChapter } from '../types';
-import FormulaRenderer, { renderFormulaToHtml } from './FormulaRenderer';
+import FormulaRenderer, { renderFormulaToHtml, preprocessText } from './FormulaRenderer';
 import { 
   Document, 
   Packer, 
@@ -39,20 +39,26 @@ interface QuizPanelProps {
 }
 
 export const AVAILABLE_FONTS = [
-  { id: 'Battambang', name: 'បាត់ដំបង (Battambang)', cssValue: "'Battambang', 'Khmer OS Battambang', sans-serif" },
-  { id: 'Moul', name: 'អក្សរមូល (Moul)', cssValue: "'Moul', 'Khmer OS Muol Light', sans-serif" },
-  { id: 'Ang DaunTep', name: 'សន្លឹកសៀវភៅ (Ang DaunTep)', cssValue: "'Ang DaunTep', 'AngDaunTep', 'Khmer OS Ang DaunTep', sans-serif" },
-  { id: 'Content', name: 'មាតិកា (Content)', cssValue: "'Content', 'Khmer OS Content', sans-serif" },
-  { id: 'Kantumruy Pro', name: 'កន្ទុយរុយ (Kantumruy Pro)', cssValue: "'Kantumruy Pro', sans-serif" },
-  { id: 'Siemreap', name: 'សៀមរាប (Siemreap)', cssValue: "'Siemreap', sans-serif" },
-  { id: 'Hanuman', name: 'ហនុមាន (Hanuman)', cssValue: "'Hanuman', serif" },
-  { id: 'Nokora', name: 'នគរ (Nokora)', cssValue: "'Nokora', serif" },
-  { id: 'Odor Mean Chey', name: 'ឧត្តរមានជ័យ (Odor)', cssValue: "'Odor Mean Chey', sans-serif" },
-  { id: 'Preahvihear', name: 'ព្រះវិហារ (Preahvihear)', cssValue: "'Preahvihear', sans-serif" },
-  { id: 'Koulen', name: 'កូលែន (Koulen)', cssValue: "'Koulen', sans-serif" },
-  { id: 'Angkor', name: 'អង្គរ (Angkor)', cssValue: "'Angkor', display" },
-  { id: 'Bokor', name: 'បូកគោ (Bokor)', cssValue: "'Bokor', display" },
-  { id: 'Fasthand', name: 'ដៃរហ័ស (Fasthand)', cssValue: "'Fasthand', cursive" }
+  { id: 'Khmer OS', name: 'Khmer OS', cssValue: "'Khmer OS', 'Hanuman', serif", wordFontName: 'Khmer OS', googleFontId: 'Hanuman' },
+  { id: 'Khmer OS Content', name: 'Khmer OS Content', cssValue: "'Khmer OS Content', 'Content', sans-serif", wordFontName: 'Khmer OS Content', googleFontId: 'Content' },
+  { id: 'Khmer OS Siemreap', name: 'Khmer OS Siemreap', cssValue: "'Khmer OS Siemreap', 'Siemreap', sans-serif", wordFontName: 'Khmer OS Siemreap', googleFontId: 'Siemreap' },
+  { id: 'Khmer OS Battambang', name: 'Khmer OS Battambang', cssValue: "'Khmer OS Battambang', 'Battambang', sans-serif", wordFontName: 'Khmer OS Battambang', googleFontId: 'Battambang' },
+  { id: 'Khmer OS Muol Light', name: 'Khmer OS Muol Light', cssValue: "'Khmer OS Muol Light', 'Moul', sans-serif", wordFontName: 'Khmer OS Muol Light', googleFontId: 'Moul' },
+  { id: 'Khmer OS Muol', name: 'Khmer OS Muol', cssValue: "'Khmer OS Muol', 'Moul', sans-serif", wordFontName: 'Khmer OS Muol', googleFontId: 'Moul' },
+  { id: 'Battambang', name: 'បាត់ដំបង (Battambang)', cssValue: "'Battambang', 'Khmer OS Battambang', sans-serif", wordFontName: 'Khmer OS Battambang', googleFontId: 'Battambang' },
+  { id: 'Moul', name: 'អក្សរមូល (Moul)', cssValue: "'Moul', 'Khmer OS Muol Light', sans-serif", wordFontName: 'Khmer OS Muol Light', googleFontId: 'Moul' },
+  { id: 'Ang DaunTep', name: 'សន្លឹកសៀវភៅ (Ang DaunTep)', cssValue: "'Ang DaunTep', 'AngDaunTep', 'Khmer OS Ang DaunTep', sans-serif", wordFontName: 'Khmer OS Ang DaunTep', googleFontId: 'AngDaunTep' },
+  { id: 'Content', name: 'មាតិកា (Content)', cssValue: "'Content', 'Khmer OS Content', sans-serif", wordFontName: 'Khmer OS Content', googleFontId: 'Content' },
+  { id: 'Kantumruy Pro', name: 'កន្ទុយរុយ (Kantumruy Pro)', cssValue: "'Kantumruy Pro', sans-serif", wordFontName: 'Kantumruy Pro', googleFontId: 'Kantumruy Pro' },
+  { id: 'Siemreap', name: 'សៀមរាប (Siemreap)', cssValue: "'Siemreap', sans-serif", wordFontName: 'Khmer OS Siemreap', googleFontId: 'Siemreap' },
+  { id: 'Hanuman', name: 'ហនុមាន (Hanuman)', cssValue: "'Hanuman', serif", wordFontName: 'Khmer OS', googleFontId: 'Hanuman' },
+  { id: 'Nokora', name: 'នគរ (Nokora)', cssValue: "'Nokora', serif", wordFontName: 'Khmer OS Bokor', googleFontId: 'Nokora' },
+  { id: 'Odor Mean Chey', name: 'ឧត្តរមានជ័យ (Odor)', cssValue: "'Odor Mean Chey', sans-serif", wordFontName: 'Khmer OS Metal Chrieng', googleFontId: 'Odor Mean Chey' },
+  { id: 'Preahvihear', name: 'ព្រះវិហារ (Preahvihear)', cssValue: "'Preahvihear', sans-serif", wordFontName: 'Khmer OS Freehand', googleFontId: 'Preahvihear' },
+  { id: 'Koulen', name: 'កូលែន (Koulen)', cssValue: "'Koulen', sans-serif", wordFontName: 'Koulen', googleFontId: 'Koulen' },
+  { id: 'Angkor', name: 'អង្គរ (Angkor)', cssValue: "'Angkor', display", wordFontName: 'Angkor', googleFontId: 'Angkor' },
+  { id: 'Bokor', name: 'បូកគោ (Bokor)', cssValue: "'Bokor', display", wordFontName: 'Bokor', googleFontId: 'Bokor' },
+  { id: 'Fasthand', name: 'ដៃរហ័ស (Fasthand)', cssValue: "'Fasthand', cursive", wordFontName: 'Fasthand', googleFontId: 'Fasthand' }
 ];
 
 export const FONT_SIZES = [5, 6, 7, 8, 9, 10, 10.5, 11, 11.5, 12, 13, 14, 15, 16, 18, 20, 24];
@@ -237,6 +243,9 @@ export default function QuizPanel({
       `;
     });
 
+    const headerGoogleFont = selectedHeaderFontObj.googleFontId || selectedHeaderFontObj.id;
+    const bodyGoogleFont = selectedBodyFontObj.googleFontId || selectedBodyFontObj.id;
+
     return `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
@@ -252,7 +261,7 @@ export default function QuizPanel({
       </xml>
       <![endif]-->
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=${selectedHeaderFontObj.id.replace(/ /g, '+')}&family=${selectedBodyFontObj.id.replace(/ /g, '+')}&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=${headerGoogleFont.replace(/ /g, '+')}&family=${bodyGoogleFont.replace(/ /g, '+')}&display=swap');
         
         @page Section1 {
           ${getWordPageSize(pageSize)}
@@ -422,8 +431,10 @@ export default function QuizPanel({
   };
 
   const exportToWord = async () => {
-    const selectedHeaderFontObj = AVAILABLE_FONTS.find(f => f.id === headerFont) || AVAILABLE_FONTS[0];
-    const selectedBodyFontObj = AVAILABLE_FONTS.find(f => f.id === bodyFont) || AVAILABLE_FONTS[0];
+    const selectedHeaderFontObj = { ...(AVAILABLE_FONTS.find(f => f.id === headerFont) || AVAILABLE_FONTS[0]) };
+    const selectedBodyFontObj = { ...(AVAILABLE_FONTS.find(f => f.id === bodyFont) || AVAILABLE_FONTS[0]) };
+    selectedHeaderFontObj.name = selectedHeaderFontObj.wordFontName || selectedHeaderFontObj.name;
+    selectedBodyFontObj.name = selectedBodyFontObj.wordFontName || selectedBodyFontObj.name;
     const questionCards = cards.filter(c => c.question) as (QuizCard & { question: Question })[];
 
     // Fetch logo as ArrayBuffer if available for Embedding in Docx
@@ -434,8 +445,17 @@ export default function QuizPanel({
         const response = await fetch(imagePath);
         if (response.ok) {
           const buffer = await response.arrayBuffer();
+          let imageType: "png" | "jpg" | "gif" | "bmp" = "png";
+          if (imagePath.toLowerCase().endsWith(".jpg") || imagePath.toLowerCase().endsWith(".jpeg")) {
+            imageType = "jpg";
+          } else if (imagePath.toLowerCase().endsWith(".gif")) {
+            imageType = "gif";
+          } else if (imagePath.toLowerCase().endsWith(".bmp")) {
+            imageType = "bmp";
+          }
           logoImageRun = new ImageRun({
             data: buffer,
+            type: imageType,
             transformation: {
               width: 50,
               height: 50,
@@ -467,48 +487,277 @@ export default function QuizPanel({
       }
     };
 
-    // Helper: Process chemical/formula HTML subscript tags into TextRun arrays
-    const convertHtmlToTextRuns = (text: string, fontName: string, fontSizePt: number, bold: boolean = false, italic: boolean = false, fontColor?: string) => {
+    // Helper: Parse and convert LaTeX, Math formulas, Sub/Superscripts on-the-fly to beautiful edit-ready Docx TextRuns
+    const convertHtmlToTextRuns = (
+      text: string, 
+      fontName: string, 
+      fontSizePt: number, 
+      bold: boolean = false, 
+      italic: boolean = false, 
+      fontColor?: string,
+      isSub: boolean = false,
+      isSup: boolean = false
+    ): TextRun[] => {
+      if (!text) return [];
+
+      let processed = preprocessText(text);
+
+      // Normalize ^{...} to <sup>...</sup>
+      processed = processed.replace(/\^\{([^}]*)\}/g, "<sup>$1</sup>");
+      // Normalize _{...} to <sub>...</sub>
+      processed = processed.replace(/_\{([^}]*)\}/g, "<sub>$1</sub>");
+
+      // Normalize simple ^... to <sup>...</sup>
+      processed = processed.replace(/\^([0-9a-zA-Z+\-≈=#*]+)/g, "<sup>$1</sup>");
+      // Normalize simple _... to <sub>...</sub>
+      processed = processed.replace(/_([0-9a-zA-Z\x7f-\xff]+)/g, "<sub>$1</sub>");
+
       const runs: TextRun[] = [];
-      const regex = /(<sub>.*?<\/sub>|<sup>.*?<\/sup>)/g;
-      const parts = text.split(regex);
-      
-      for (const part of parts) {
-        if (!part) continue;
-        if (part.startsWith('<sub>') && part.endsWith('</sub>')) {
-          const subText = part.slice(5, -6);
+      let index = 0;
+
+      while (index < processed.length) {
+        const subIdx = processed.indexOf("<sub>", index);
+        const supIdx = processed.indexOf("<sup>", index);
+        const fracIdx = processed.indexOf("\\frac", index);
+        const sqrtIdx = processed.indexOf("\\sqrt", index);
+
+        const candidates = [
+          { type: "sub", idx: subIdx },
+          { type: "sup", idx: supIdx },
+          { type: "frac", idx: fracIdx },
+          { type: "sqrt", idx: sqrtIdx }
+        ].filter(c => c.idx !== -1);
+
+        if (candidates.length === 0) {
+          const remainingText = processed.substring(index);
           runs.push(new TextRun({
-            text: subText,
+            text: remainingText,
             font: fontName,
             size: fontSizePt * 2,
             bold,
             italics: italic,
             color: fontColor,
-            subScript: true,
+            subScript: isSub,
+            superScript: isSup,
           }));
-        } else if (part.startsWith('<sup>') && part.endsWith('</sup>')) {
-          const superText = part.slice(5, -6);
+          break;
+        }
+
+        candidates.sort((a, b) => a.idx - b.idx);
+        const nextMatch = candidates[0];
+
+        if (nextMatch.idx > index) {
+          const textBefore = processed.substring(index, nextMatch.idx);
           runs.push(new TextRun({
-            text: superText,
+            text: textBefore,
             font: fontName,
             size: fontSizePt * 2,
             bold,
             italics: italic,
             color: fontColor,
-            superScript: true,
-          }));
-        } else {
-          runs.push(new TextRun({
-            text: part,
-            font: fontName,
-            size: fontSizePt * 2,
-            bold,
-            italics: italic,
-            color: fontColor,
+            subScript: isSub,
+            superScript: isSup,
           }));
         }
+
+        index = nextMatch.idx;
+
+        if (nextMatch.type === "sub" || nextMatch.type === "sup") {
+          const isSubscript = nextMatch.type === "sub";
+          const startTag = isSubscript ? "<sub>" : "<sup>";
+          const endTag = isSubscript ? "</sub>" : "</sup>";
+          const startIdx = index + startTag.length;
+          const endIdx = processed.indexOf(endTag, startIdx);
+
+          if (endIdx === -1) {
+            runs.push(new TextRun({
+              text: startTag,
+              font: fontName,
+              size: fontSizePt * 2,
+              bold,
+              italics: italic,
+              color: fontColor,
+              subScript: isSub,
+              superScript: isSup,
+            }));
+            index = startIdx;
+          } else {
+            const innerText = processed.substring(startIdx, endIdx);
+            const innerRuns = convertHtmlToTextRuns(
+              innerText,
+              fontName,
+              fontSizePt,
+              bold,
+              italic,
+              fontColor,
+              isSub || isSubscript,
+              isSup || !isSubscript
+            );
+            runs.push(...innerRuns);
+            index = endIdx + endTag.length;
+          }
+        } else if (nextMatch.type === "sqrt") {
+          let innerText = "";
+          let nextCharIdx = index + 5; // skip "\sqrt"
+          while (nextCharIdx < processed.length && /\s/.test(processed[nextCharIdx])) {
+            nextCharIdx++;
+          }
+          if (processed[nextCharIdx] === "{") {
+            let braceCount = 1;
+            let scanIdx = nextCharIdx + 1;
+            while (scanIdx < processed.length && braceCount > 0) {
+              if (processed[scanIdx] === "{") braceCount++;
+              else if (processed[scanIdx] === "}") braceCount--;
+              scanIdx++;
+            }
+            if (braceCount === 0) {
+              innerText = processed.substring(nextCharIdx + 1, scanIdx - 1);
+              index = scanIdx;
+            } else {
+              innerText = processed.substring(nextCharIdx + 1);
+              index = processed.length;
+            }
+          } else {
+            innerText = processed[nextCharIdx] || "";
+            index = nextCharIdx + 1;
+          }
+
+          runs.push(new TextRun({
+            text: "√(",
+            font: fontName,
+            size: fontSizePt * 2,
+            bold: true,
+            italics: italic,
+            color: fontColor,
+            subScript: isSub,
+            superScript: isSup,
+          }));
+
+          const innerRuns = convertHtmlToTextRuns(
+            innerText,
+            fontName,
+            fontSizePt,
+            bold,
+            italic,
+            fontColor,
+            isSub,
+            isSup
+          );
+          runs.push(...innerRuns);
+
+          runs.push(new TextRun({
+            text: ")",
+            font: fontName,
+            size: fontSizePt * 2,
+            bold: true,
+            italics: italic,
+            color: fontColor,
+            subScript: isSub,
+            superScript: isSup,
+          }));
+        } else if (nextMatch.type === "frac") {
+          let numText = "";
+          let denText = "";
+          let scanIdx = index + 5; // skip "\frac"
+          
+          const parseCurlyBlock = () => {
+            while (scanIdx < processed.length && /\s/.test(processed[scanIdx])) {
+              scanIdx++;
+            }
+            if (processed[scanIdx] === "{") {
+              let braceCount = 1;
+              let startBlock = scanIdx + 1;
+              scanIdx++;
+              while (scanIdx < processed.length && braceCount > 0) {
+                if (processed[scanIdx] === "{") braceCount++;
+                else if (processed[scanIdx] === "}") braceCount--;
+                scanIdx++;
+              }
+              if (braceCount === 0) {
+                return processed.substring(startBlock, scanIdx - 1);
+              }
+            }
+            return "";
+          };
+
+          numText = parseCurlyBlock();
+          denText = parseCurlyBlock();
+
+          if (numText || denText) {
+            index = scanIdx;
+            
+            runs.push(new TextRun({
+              text: "(",
+              font: fontName,
+              size: fontSizePt * 2,
+              bold,
+              italics: italic,
+              color: fontColor,
+              subScript: isSub,
+              superScript: isSup,
+            }));
+
+            const numRuns = convertHtmlToTextRuns(
+              numText,
+              fontName,
+              fontSizePt,
+              bold,
+              italic,
+              fontColor,
+              isSub,
+              isSup
+            );
+            runs.push(...numRuns);
+
+            runs.push(new TextRun({
+              text: " ÷ ",
+              font: fontName,
+              size: fontSizePt * 2,
+              bold: true,
+              italics: italic,
+              color: fontColor,
+              subScript: isSub,
+              superScript: isSup,
+            }));
+
+            const denRuns = convertHtmlToTextRuns(
+              denText,
+              fontName,
+              fontSizePt,
+              bold,
+              italic,
+              fontColor,
+              isSub,
+              isSup
+            );
+            runs.push(...denRuns);
+
+            runs.push(new TextRun({
+              text: ")",
+              font: fontName,
+              size: fontSizePt * 2,
+              bold,
+              italics: italic,
+              color: fontColor,
+              subScript: isSub,
+              superScript: isSup,
+            }));
+          } else {
+            runs.push(new TextRun({
+              text: "\\frac",
+              font: fontName,
+              size: fontSizePt * 2,
+              bold,
+              italics: italic,
+              color: fontColor,
+              subScript: isSub,
+              superScript: isSup,
+            }));
+            index = index + 5;
+          }
+        }
       }
-      
+
       if (runs.length === 0) {
         runs.push(new TextRun({
           text: "",
@@ -516,7 +765,7 @@ export default function QuizPanel({
           size: fontSizePt * 2,
         }));
       }
-      
+
       return runs;
     };
 
@@ -709,7 +958,7 @@ export default function QuizPanel({
       borders: tableBordersNone,
       rows: [
         new TableRow({
-          cells: [
+          children: [
             new TableCell({
               width: { size: pctLeft, type: WidthType.PERCENTAGE },
               borders: tableBordersNone,
@@ -776,7 +1025,7 @@ export default function QuizPanel({
         spacing: { before: 40, after: 180 },
         children: [
           new TextRun({
-            text: "(បម្រាម៖ បេក្ខជនណាមើលសំណៅឯកសារ ចម្លងគ្នា មើលគ្នា មិនធ្វើតាមបទបញ្ជាផ្ទៃក្នុងអនុរក្សនឹងត្រូវបានពិន្ទុសូន្យ។)",
+            text: "(បម្រាម៖ បេក្ខជនណាមើលសំណៅឯកសារ ចម្លងគ្នា មើលគ្នា មិនធ្វើតាមបទបញ្ជាផ្ទៃក្នុងអនុរក្សនឹងត្រូវបានពិន្ទុសូន្យ।)",
             font: selectedBodyFontObj.name,
             size: 16,
             color: "7f1d1d",
@@ -797,7 +1046,7 @@ export default function QuizPanel({
       childrenElements.push(
         new Paragraph({
           spacing: { before: 240, after: 120 },
-          keepWithNext: true,
+          keepNext: true,
           children: [
             new TextRun({
               text: `សំណួរទី ${qIdx + 1}៖ `,
@@ -861,7 +1110,7 @@ export default function QuizPanel({
             );
           }
 
-          rows.push(new TableRow({ cells }));
+          rows.push(new TableRow({ children: cells }));
         }
 
         childrenElements.push(
@@ -922,18 +1171,27 @@ export default function QuizPanel({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("docx Packer failed, falling back to legacy format: ", err);
-      // Fallback html-based .doc
-      const docHtml = generateDocHtml(selectedHeaderFontObj, selectedBodyFontObj, questionCards);
-      const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `វិញ្ញាសា_${activeRoom ? activeRoom.name : 'ប្រឡង'}.doc`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      exportToHtmlDoc();
     }
+  };
+
+  const exportToHtmlDoc = () => {
+    const selectedHeaderFontObj = { ...(AVAILABLE_FONTS.find(f => f.id === headerFont) || AVAILABLE_FONTS[0]) };
+    const selectedBodyFontObj = { ...(AVAILABLE_FONTS.find(f => f.id === bodyFont) || AVAILABLE_FONTS[0]) };
+    selectedHeaderFontObj.name = selectedHeaderFontObj.wordFontName || selectedHeaderFontObj.name;
+    selectedBodyFontObj.name = selectedBodyFontObj.wordFontName || selectedBodyFontObj.name;
+    const questionCards = cards.filter(c => c.question) as (QuizCard & { question: Question })[];
+    const docHtml = generateDocHtml(selectedHeaderFontObj, selectedBodyFontObj, questionCards);
+
+    const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `វិញ្ញាសា_${activeRoom ? activeRoom.name : 'ប្រឡង'}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const startRenameChapter = (chapter: QuizChapter) => {
@@ -2537,6 +2795,16 @@ export default function QuizPanel({
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>ទាញយកជា Word (.docx)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={exportToHtmlDoc}
+                    disabled={cards.filter(c => c.question).length === 0}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-500/10 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ទាញយកជា Word (HTML .doc)</span>
                   </button>
 
                   <button

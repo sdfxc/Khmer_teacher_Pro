@@ -291,29 +291,52 @@ Provide the response in JSON format.`;
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: { parts },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              text: { type: Type.STRING, description: "The question text, written in Khmer" },
-              options: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "Exactly 4 multiple choice options, written in Khmer"
-              },
-              correctIndex: { type: Type.INTEGER, description: "The 0-based index of the correct option" }
-            },
-            required: ["text", "options", "correctIndex"]
+    const generateWithRetry = async (partsList: any[], retriesLeft = 4, delayMs = 1500): Promise<any> => {
+      try {
+        return await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: { parts: partsList },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  text: { type: Type.STRING, description: "The question text, written in Khmer" },
+                  options: { 
+                    type: Type.ARRAY, 
+                    items: { type: Type.STRING },
+                    description: "Exactly 4 multiple choice options, written in Khmer"
+                  },
+                  correctIndex: { type: Type.INTEGER, description: "The 0-based index of the correct option" }
+                },
+                required: ["text", "options", "correctIndex"]
+              }
+            }
           }
+        });
+      } catch (error: any) {
+        const errorMsg = error?.message || String(error);
+        const isRetryable = 
+          errorMsg.includes("503") || 
+          errorMsg.includes("UNAVAILABLE") || 
+          errorMsg.includes("429") || 
+          errorMsg.includes("500") || 
+          errorMsg.toLowerCase().includes("overloaded") || 
+          errorMsg.toLowerCase().includes("demand") ||
+          errorMsg.toLowerCase().includes("temporary");
+          
+        if (isRetryable && retriesLeft > 0) {
+          console.warn(`Gemini API returned retryable error: ${errorMsg}. Retrying in ${delayMs}ms... (${retriesLeft} retries left)`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          return generateWithRetry(partsList, retriesLeft - 1, delayMs * 2);
         }
+        throw error;
       }
-    });
+    };
+
+    const response = await generateWithRetry(parts);
 
     const generatedText = response.text || "[]";
     const jsonParsed = JSON.parse(generatedText);
