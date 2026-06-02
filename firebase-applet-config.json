@@ -1,10 +1,10 @@
 {
-  "projectId": "elevated-timer-s8gvj",
-  "appId": "1:674731925281:web:e55cbbccf68ca1b9092860",
-  "apiKey": "AIzaSyDh-lzvpNX6mg7SAAajtAlD1aMkAy1rvOs",
-  "authDomain": "elevated-timer-s8gvj.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-b727153d-b991-4d5d-b685-54aeb74f5665",
-  "storageBucket": "elevated-timer-s8gvj.firebasestorage.app",
-  "messagingSenderId": "674731925281",
-  "measurementId": ""
+  "projectId": "remixed-project-id",
+  "appId": "remixed-app-id",
+  "apiKey": "remixed-api-key",
+  "authDomain": "remixed-auth-domain",
+  "firestoreDatabaseId": "remixed-firestore-database-id",
+  "storageBucket": "remixed-storage-bucket",
+  "messagingSenderId": "remixed-messaging-sender-id",
+  "measurementId": "remixed-measurement-id"
 }

@@ -9,6 +9,9 @@ export interface Student {
   currentAnswerCardId?: string;
   currentAnswerIndex?: number;
   currentAnswerIsCorrect?: boolean;
+  isApproved?: boolean;
+  isDeclined?: boolean;
+  isSimulated?: boolean;
 }
 
 export interface Question {

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, X, BookOpen, Loader2, Info, Upload, FileText, Trash2, FileSpreadsheet, Presentation } from 'lucide-react';
 import { generateQuestions, getSavedApiKey, saveApiKey, FileData } from '../lib/gemini';
 import { Question } from '../types';
+import { PREBUILT_LESSONS } from '../lib/templates';
 
 interface LessonModalProps {
   isOpen: boolean;
@@ -164,7 +165,20 @@ export default function LessonModal({ isOpen, onClose, onQuestionsGenerated }: L
         setShowKeyInput(true);
         setErrorMsg("សូមបញ្ចូល កូនសោ API Gemini (Gemini API Key) ដើម្បីបង្កើតសំណួរដោយផ្ទាល់ពីកម្មវិធីរុករក (Browser)។");
       } else {
-        setErrorMsg(err.message || 'មានបញ្ហាក្នុងការបង្កើតសំណួរ');
+        const rawErr = err.message || '';
+        if (
+          rawErr.toLowerCase().includes("quota") ||
+          rawErr.toLowerCase().includes("limit") ||
+          rawErr.toLowerCase().includes("resource_exhausted") ||
+          rawErr.toLowerCase().includes("exhausted") ||
+          rawErr.toLowerCase().includes("429") ||
+          rawErr.toLowerCase().includes("busy") ||
+          rawErr.toLowerCase().includes("overloaded")
+        ) {
+          setErrorMsg("⚠️ កូតានៃគណនីឥតគិតថ្លៃរួមគ្នាសម្រាប់កម្មវិធី (Gemini API Shared Free Quota) ត្រូវបានកំណត់ទំហំ។ សូមសាកល្បងម្ដងទៀតក្នុងរយៈពេល ១ នាទីខាងមុខ ឬកំណត់ API Key ផ្ទាល់ខ្លួនរបស់អ្នក (ចុច '🔐 កំណត់ API Key' ខាងលើ) ឬជ្រើសរើសប្រើប្រាស់មេរៀនគំរូទូទៅខាងក្រោមភ្លាមៗដោយពុំបាច់រង់ចាំ AI ឡើយ!");
+        } else {
+          setErrorMsg(rawErr || 'មានបញ្ហាក្នុងការបង្កើតសំណួរ');
+        }
       }
     } finally {
       setLoading(false);
@@ -272,6 +286,48 @@ export default function LessonModal({ isOpen, onClose, onQuestionsGenerated }: L
                   </div>
                 </div>
               )}
+
+              {/* Prebuilt Lesson Templates */}
+              <div className="mb-6 p-5 bg-indigo-50/40 border border-indigo-100 rounded-3xl">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3.5 gap-2 border-b border-indigo-100/50 pb-2.5">
+                  <span className="flex items-center gap-2 text-xs font-black text-slate-705 dark:text-slate-700 uppercase tracking-wider">
+                    📚 ជ្រើសរើសមេរៀនគំរូទូទៅ និងរហ័ស (Instant Offline Templates)
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-1 rounded-full border border-emerald-250">
+                    មិនប្រើអ៊ីនធឺណិត / រួចរាល់ភ្លាមៗ
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {PREBUILT_LESSONS.map((lesson) => (
+                    <button
+                      key={lesson.id}
+                      type="button"
+                      onClick={() => {
+                        onQuestionsGenerated([...lesson.questions]);
+                        onClose();
+                      }}
+                      className="text-left p-3.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-2xl transition-all cursor-pointer group shadow-sm active:scale-[0.98] flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-xl select-none">
+                            {lesson.subject === 'math' ? '🧮' : lesson.subject === 'physics' ? '⚡' : lesson.subject === 'chemistry' ? '🧪' : '🏰'}
+                          </span>
+                          <h4 className="text-[12.5px] font-black text-slate-800 group-hover:text-indigo-650 transition-colors">
+                            {lesson.title}
+                          </h4>
+                        </div>
+                        <p className="text-[10.5px] text-slate-500 line-clamp-2 leading-relaxed font-semibold">
+                          {lesson.description}
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-indigo-600 font-extrabold mt-3 inline-block">
+                        ទាញចូល {lesson.questions.length} សំណួរភ្លាមៗ ➔
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="mb-6">
                 <label className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2">

@@ -205,7 +205,7 @@ export default function QuizPanel({
 
   // Export & Print state
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [headerFont, setHeaderFont] = useState('Moul');
+  const [headerFont, setHeaderFont] = useState('Khmer OS Muol Light');
   const [bodyFont, setBodyFont] = useState('Battambang');
   const [headerFontSize, setHeaderFontSize] = useState(10.5);
   const [bodyFontSize, setBodyFontSize] = useState(11);
@@ -219,16 +219,17 @@ export default function QuizPanel({
   const [customLeftSpan, setCustomLeftSpan] = useState<number>(5);
   const [customCenterSpan, setCustomCenterSpan] = useState<number>(2);
   const [customRightSpan, setCustomRightSpan] = useState<number>(5);
-  const [examCenter, setExamCenter] = useState('.....................................................');
-  const [roomNumber, setRoomNumber] = useState('..................');
-  const [subjectName, setSubjectName] = useState('');
-  const [deskNumber, setDeskNumber] = useState('..................');
+  const [examCenter, setExamCenter] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
+  const [subjectName, setSubjectName] = useState('មេរៀនទី១');
+  const [deskNumber, setDeskNumber] = useState('');
   
-  const [examName, setExamName] = useState('...................................');
-  const [gradeNumber, setGradeNumber] = useState('..................');
-  const [examSession, setExamSession] = useState('......../......../........');
-  const [durationTime, setDurationTime] = useState('................ នាទី');
-  const [totalScore, setTotalScore] = useState('...... ពិន្ទុ');
+  const [examName, setExamName] = useState('');
+  const [gradeNumber, setGradeNumber] = useState('');
+  const [examSession, setExamSession] = useState('');
+  const [durationTime, setDurationTime] = useState('');
+  const [totalScore, setTotalScore] = useState('');
+  const [studentName, setStudentName] = useState('');
   
   const [logoText1, setLogoText1] = useState('សាលារៀនសុវណ្ណភូមិ');
   const [logoText2, setLogoText2] = useState('ទីតាំងផ្សារដីហុយ');
@@ -395,6 +396,12 @@ export default function QuizPanel({
           vertical-align: top;
           padding: 4px;
         }
+        .header-right-cell {
+          font-family: ${selectedHeaderFontObj.cssValue};
+          font-size: ${headerFontSize}pt;
+          vertical-align: top;
+          padding: 4px;
+        }
         .center-text {
           text-align: center;
         }
@@ -457,10 +464,10 @@ export default function QuizPanel({
         <table class="header-table">
           <tr>
             <td class="header-cell" style="width: 30%;">
-              <div>មណ្ឌលប្រឡង៖ <span class="bold-text">${examCenter}</span></div>
-              <div style="margin-top: 6px;">លេខបន្ទប់៖ <span class="bold-text">${roomNumber}</span></div>
-              <div style="margin-top: 6px;">វិញ្ញាសា៖ <span class="bold-text">${subjectName}</span></div>
-              <div style="margin-top: 6px;">លេខតុ៖ <span class="bold-text">${deskNumber}</span></div>
+              <div>មណ្ឌលប្រឡង៖ <span class="bold-text">${examCenter || '.....................................................'}</span></div>
+              <div style="margin-top: 6px;">លេខបន្ទប់៖ <span class="bold-text">${roomNumber || '..................'}</span></div>
+              <div style="margin-top: 6px;">វិញ្ញាសា៖ <span class="bold-text">${subjectName || '.....................................'}</span></div>
+              <div style="margin-top: 6px;">លេខតុ៖ <span class="bold-text">${deskNumber || '..................'}</span></div>
             </td>
             <td class="header-cell center-text" style="width: 32%;">
               <div style="height: 60px; text-align: center;">
@@ -475,16 +482,11 @@ export default function QuizPanel({
               <div class="school-title">${logoText1}</div>
               <div style="font-size: 9pt; margin-top: 2px;">${logoText2}</div>
             </td>
-            <td class="header-cell" style="width: 23%; text-align: left; padding-left: 10px;">
-              <div>ប្រឡង៖ <span class="bold-text">${examName}</span></div>
-              <div style="margin-top: 6px;">ថ្នាក់ទី៖ <span class="bold-text">${gradeNumber}</span></div>
-              <div style="margin-top: 6px;">សម័យប្រឡង៖ <span class="bold-text">${examSession}</span></div>
-              <div style="margin-top: 6px;">រយៈពេល៖ <span class="bold-text">${durationTime}</span> <span style="font-size: 9pt;">(${totalScore})</span></div>
-            </td>
-            <td class="header-cell" style="width: 15%; text-align: center; vertical-align: bottom; padding-bottom: 0px;">
-              <div style="border: 3px double #000000; border-radius: 25px; width: 85px; height: 65px; text-align: center; display: inline-block; margin-top: 25px;">
-                <div style="border-top: 1px dashed #000000; margin-top: 32px; width: 55px; margin-left: auto; margin-right: auto;"></div>
-              </div>
+            <td class="header-right-cell" style="width: 38%; text-align: left; padding-left: 10px;">
+              <div>ប្រឡង៖ <span class="bold-text">${examName || '..................'}</span> &nbsp;&nbsp;&nbsp; ថ្នាក់ទី៖ <span class="bold-text">${gradeNumber || '...............'}</span></div>
+              <div style="margin-top: 6px;">ឈ្មោះ៖ <span class="bold-text">${studentName || '.....................................'}</span></div>
+              <div style="margin-top: 6px;">សម័យប្រឡង៖ <span class="bold-text">${examSession || '......../......../........'}</span></div>
+              <div style="margin-top: 6px;">រយៈពេល៖ <span class="bold-text">${getDurationDisplay(durationTime) || '................ នាទី'}</span> <span style="font-size: 9pt;">(${getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
             </td>
           </tr>
         </table>
@@ -862,44 +864,37 @@ export default function QuizPanel({
       return runs;
     };
 
-    // Document Table Layout widths calculations (Summing up to 90%, leaving 10% for the Score box)
+    // Document Table Layout widths calculations (Summing up to 100%)
     const totalSpan = customLeftSpan + customCenterSpan + customRightSpan;
     
     let pctLeft = 38;
     let pctCenter = 15;
-    let pctRight = 37;
-    let pctScore = 10;
+    let pctRight = 47;
     
     if (headerLayout === '5-1-5') {
       pctLeft = 44;
       pctCenter = 10;
-      pctRight = 36;
-      pctScore = 10;
+      pctRight = 46;
     } else if (headerLayout === '5-2-5') {
       pctLeft = 38;
       pctCenter = 20;
-      pctRight = 32;
-      pctScore = 10;
+      pctRight = 42;
     } else if (headerLayout === '4-4-4') {
       pctLeft = 33;
       pctCenter = 33;
-      pctRight = 24;
-      pctScore = 10;
+      pctRight = 34;
     } else if (headerLayout === '4-2-6') {
       pctLeft = 33;
       pctCenter = 17;
-      pctRight = 40;
-      pctScore = 10;
+      pctRight = 50;
     } else if (headerLayout === '5-1-6') {
       pctLeft = 38;
       pctCenter = 10;
-      pctRight = 42;
-      pctScore = 10;
+      pctRight = 52;
     } else if (headerLayout === 'custom') {
-      pctLeft = Math.round((customLeftSpan / totalSpan) * 90);
-      pctCenter = Math.round((customCenterSpan / totalSpan) * 90);
-      pctRight = 90 - pctLeft - pctCenter;
-      pctScore = 10;
+      pctLeft = Math.round((customLeftSpan / totalSpan) * 100);
+      pctCenter = Math.round((customCenterSpan / totalSpan) * 100);
+      pctRight = 100 - pctLeft - pctCenter;
     }
 
     // Borderless Style Definition
@@ -997,6 +992,13 @@ export default function QuizPanel({
       new Paragraph({
         spacing: { after: 120 },
         children: [
+          new TextRun({ text: "ឈ្មោះ៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
+          new TextRun({ text: studentName || ".....................................", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
+        ]
+      }),
+      new Paragraph({
+        spacing: { after: 120 },
+        children: [
           new TextRun({ text: "សម័យប្រឡង៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
           new TextRun({ text: examSession || "......../......../........", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
         ]
@@ -1004,47 +1006,11 @@ export default function QuizPanel({
       new Paragraph({
         children: [
           new TextRun({ text: "រយៈពេល៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
-          new TextRun({ text: durationTime ? `${durationTime}` : "................ នាទី", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
-          new TextRun({ text: totalScore ? ` (${totalScore})` : " (...... ពិន្ទុ)", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true })
+          new TextRun({ text: getDurationDisplay(durationTime) || "................ នាទី", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
+          new TextRun({ text: getScoreDisplay(totalScore) ? ` (${getScoreDisplay(totalScore)})` : " (...... ពិន្ទុ)", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true })
         ]
       })
     ];
-
-    const scoreCell = new TableCell({
-      width: { size: pctScore, type: WidthType.PERCENTAGE },
-      borders: {
-        top: { style: BorderStyle.DOUBLE, size: 24, color: "000000" },
-        bottom: { style: BorderStyle.DOUBLE, size: 24, color: "000000" },
-        left: { style: BorderStyle.DOUBLE, size: 24, color: "000000" },
-        right: { style: BorderStyle.DOUBLE, size: 24, color: "000000" },
-      },
-      verticalAlign: VerticalAlign.CENTER,
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [
-            new TextRun({
-              text: "ពិន្ទុ",
-              font: selectedHeaderFontObj.name,
-              size: 20,
-              bold: true,
-            })
-          ]
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 40 },
-          children: [
-            new TextRun({
-              text: ".......",
-              font: selectedHeaderFontObj.name,
-              size: 20,
-              bold: true,
-            })
-          ]
-        })
-      ]
-    });
 
     const headerTable = new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1067,8 +1033,7 @@ export default function QuizPanel({
               borders: tableBordersNone,
               margins: { left: 200 },
               children: rightCellChildren,
-            }),
-            scoreCell
+            })
           ]
         })
       ]
@@ -1455,7 +1420,7 @@ export default function QuizPanel({
             <div className="bg-white dark:bg-white border-2 border-slate-200 shadow-md rounded-[2rem] p-10 mb-8 flex-1 flex flex-col items-center justify-center relative overflow-hidden">
               <HelpCircle className="absolute -top-12 -right-12 w-48 h-48 text-indigo-500/5 rotate-12" />
               <span className="text-xs uppercase font-black tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">សំណួរលេខ {activeCard.number}</span>
-              <h2 className="text-3xl sm:text-4xl font-black text-slate-950 text-center leading-relaxed relative z-10 max-w-2xl">
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-950 text-center leading-relaxed relative z-10 max-w-2xl break-words whitespace-normal word-break-break-word">
                 <FormulaRenderer text={activeCard.question?.text || ''} />
               </h2>
             </div>
@@ -1476,8 +1441,8 @@ export default function QuizPanel({
                           : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 opacity-65 text-slate-400 dark:text-slate-500'
                   }`}
                 >
-                  <div className="flex items-center gap-5 relative z-10">
-                    <span className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-md transition-all ${
+                  <div className="flex items-center gap-5 relative z-10 w-full">
+                    <span className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-md transition-all shrink-0 ${
                       idx === correctIndex && showResult !== null
                         ? 'bg-green-600 text-white'
                         : showResult !== null
@@ -1486,7 +1451,7 @@ export default function QuizPanel({
                     }`}>
                       {String.fromCharCode(65 + idx)}
                     </span>
-                    <span className={`text-lg sm:text-xl font-bold tracking-tight leading-snug ${
+                    <span className={`text-lg sm:text-xl font-bold tracking-tight leading-snug break-words whitespace-normal flex-1 ${
                       idx === correctIndex && showResult !== null
                         ? 'text-green-600 dark:text-green-400'
                         : 'text-slate-800 dark:text-slate-200'
@@ -1605,6 +1570,18 @@ export default function QuizPanel({
     }
   };
 
+  const getDurationDisplay = (val: string) => {
+    if (!val || val.trim() === '') return '';
+    if (val.includes('នាទី') || val.includes('min') || val.includes('mn')) return val;
+    return `${val} នាទី`;
+  };
+
+  const getScoreDisplay = (val: string) => {
+    if (!val || val.trim() === '') return '';
+    if (val.includes('ពិន្ទុ') || val.includes('pt') || val.includes('pts')) return val;
+    return `${val} ពិន្ទុ`;
+  };
+
   const renderDotField = (value: string, fallbackDots: string) => {
     const actualVal = (value || '').trim() === '' ? fallbackDots : value;
     // Checks if the field is empty or contains purely dots/separators
@@ -1641,6 +1618,11 @@ export default function QuizPanel({
   };
 
   const headerInlineStyle = {
+    fontFamily: selectedHeaderFontObj.cssValue,
+    fontSize: `${headerFontSize}pt`
+  };
+
+  const rightColumnInlineStyle = {
     fontFamily: selectedHeaderFontObj.cssValue,
     fontSize: `${headerFontSize}pt`
   };
@@ -2541,6 +2523,16 @@ export default function QuizPanel({
                             />
                           </div>
                         </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">ឈ្មោះសិស្ស</label>
+                          <input
+                            type="text"
+                            value={studentName}
+                            onChange={(e) => setStudentName(e.target.value)}
+                            placeholder="ឈ្មោះ..."
+                            className="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -3004,20 +2996,14 @@ export default function QuizPanel({
                       </div>
 
                       {/* Right Block */}
-                      <div className={`${layoutWidths.right.className} flex items-start justify-between gap-1.5 text-left font-black text-slate-950 pl-2 leading-snug font-sans`} style={{ ...headerInlineStyle, ...layoutWidths.right.style }}>
-                        <div className="flex-1 flex flex-col gap-1.5 min-w-0 font-sans">
-                          <div className="flex justify-between items-center w-full truncate">
-                            <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
-                            <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
-                          </div>
-                          <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
-                          <div className="truncate">រយៈពេល៖ {renderDotField(durationTime, '................ នាទី')} <span className="font-black text-[9px]">({totalScore || '...... ពិន្ទុ'})</span></div>
+                      <div className={`${layoutWidths.right.className} flex flex-col gap-1.5 text-left font-black text-slate-950 pl-2 leading-snug font-sans`} style={{ ...rightColumnInlineStyle, ...layoutWidths.right.style }}>
+                        <div className="flex justify-between items-center w-full truncate">
+                          <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
+                          <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
                         </div>
-
-                        {/* Score Oval Place */}
-                        <div className="border-double border-[3px] border-slate-900 rounded-[50%/50%] w-[84px] h-[64px] flex flex-col items-center justify-center shrink-0 self-end mt-4 p-1 translate-y-3" title="រង្វង់សម្រាប់ដាក់ពិន្ទុ">
-                          <div className="border-t border-dashed border-slate-700 w-[55px] my-auto"></div>
-                        </div>
+                        <div className="truncate">ឈ្មោះ៖ {renderDotField(studentName, '.....................................')}</div>
+                        <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
+                        <div className="truncate">រយៈពេល៖ {renderDotField(getDurationDisplay(durationTime), '................ នាទី')} <span className="font-black text-[9px]">({getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
                       </div>
                     </div>
 
@@ -3190,20 +3176,14 @@ export default function QuizPanel({
           </div>
           
           {/* Right Column */}
-          <div className={`${layoutWidths.right.className} flex items-start justify-between gap-1.5 mt-[6px] pl-4`} style={{ ...headerInlineStyle, ...layoutWidths.right.style }}>
-            <div className="flex-1 flex flex-col justify-start text-left font-black gap-2 min-w-0">
-              <div className="flex justify-between items-center w-full">
-                <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
-                <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
-              </div>
-              <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
-              <div className="truncate">រយៈពេល៖ {renderDotField(durationTime, '................ នាទី')} <span className="font-medium">({totalScore || '...... ពិន្ទុ'})</span></div>
+          <div className={`${layoutWidths.right.className} flex flex-col justify-start text-left font-black gap-2 mt-[6px] pl-4 font-sans`} style={{ ...rightColumnInlineStyle, ...layoutWidths.right.style }}>
+            <div className="flex justify-between items-center w-full">
+              <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
+              <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
             </div>
-
-            {/* Score Oval Place */}
-            <div className="border-double border-[3px] border-black rounded-[50%/50%] w-[88px] h-[66px] flex flex-col items-center justify-center shrink-0 self-end mt-4 p-1 translate-y-3" title="រង្វង់សម្រាប់ដាក់ពិន្ទុ">
-              <div className="border-t border-dashed border-black w-[58px] my-auto"></div>
-            </div>
+            <div className="truncate">ឈ្មោះ៖ {renderDotField(studentName, '.....................................')}</div>
+            <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
+            <div className="truncate">រយៈពេល៖ {renderDotField(getDurationDisplay(durationTime), '................ នាទី')} <span className="font-medium">({getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
           </div>
         </div>
         

@@ -13,8 +13,7 @@ import SpinningWheel from './components/SpinningWheel';
 import GroupDivider from './components/GroupDivider';
 import StudentManager from './components/StudentManager';
 import { Student, Question, QuizCard, ClassInfo, TeacherAccount, QuizRoom, QuizChapter } from './types';
-import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './lib/firebase';
+import { db, handleFirestoreError, OperationType, collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, isFirebasePlaceholder } from './lib/firebase';
 import StudentPlayView from './components/StudentPlayView';
 import StudentLobby from './components/StudentLobby';
 
@@ -342,9 +341,10 @@ export default function App() {
 
   // Real-time Student Synchronization for cloud sessions
   useEffect(() => {
-    if (!teacher || !activeClassId) return;
+    if (!activeClassId) return;
+    const tId = teacher?.id || 'local';
 
-    const studentsCollRef = collection(db, 'teachers', teacher.id, 'classes', activeClassId, 'students');
+    const studentsCollRef = collection(db, 'teachers', tId, 'classes', activeClassId, 'students');
     const unsubscribe = onSnapshot(studentsCollRef, (snapshot) => {
       let loadedStudents: Student[] = [];
       snapshot.forEach(docSnap => {
@@ -360,11 +360,12 @@ export default function App() {
 
   // Sync active quiz state to Class document in Firestore for student phones
   useEffect(() => {
-    if (!teacher || !activeClassId) return;
+    if (!activeClassId) return;
+    const tId = teacher?.id || 'local';
 
     const syncClassInfo = async () => {
       try {
-        const classDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId);
+        const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
         await setDoc(classDocRef, {
           activeCardId: activeCardId,
           activeRoomId: activeRoomId,
@@ -1031,10 +1032,16 @@ export default function App() {
                 </span>
               )}
               {teacher && !loadingCloudData && (
-                <span className="inline-flex items-center gap-1 text-emerald-500 dark:text-emerald-400 font-black text-[9px] uppercase ml-1.5">
-                  <Cloud className="w-3 h-3" />
-                  <span>Cloud Active</span>
-                </span>
+                isFirebasePlaceholder ? (
+                  <span className="inline-flex items-center gap-1 text-amber-500 dark:text-amber-400 font-black text-[9px] uppercase ml-1.5 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                    <span>⚠️ របៀបសាកល្បង (Local Mode)</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-emerald-500 dark:text-emerald-400 font-black text-[9px] uppercase ml-1.5 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+                    <Cloud className="w-3 h-3" />
+                    <span>Cloud Active</span>
+                  </span>
+                )
               )}
             </p>
           </div>
@@ -1363,6 +1370,8 @@ export default function App() {
             setActiveCardId={setActiveCardId}
             activeCardState={activeCardState}
             setActiveCardState={setActiveCardState}
+            chapters={chapters}
+            handleSelectRoom={handleSelectRoom}
           />
         )}
       </main>

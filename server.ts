@@ -347,6 +347,108 @@ Provide the response in JSON format.`;
   }
 });
 
+// --- CLOUD MEMORY DB PERSISTENCE FOR LOCAL SESSIONS ---
+import fs from "fs";
+
+const DB_FILE = path.join(process.cwd(), "classroom_db.json");
+
+// Load initial database state from local file if exists
+let memoryDb: Record<string, any> = {};
+try {
+  if (fs.existsSync(DB_FILE)) {
+    memoryDb = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  }
+} catch (e) {
+  console.error("Failed to load classroom_db.json:", e);
+}
+
+// Save database to file
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(memoryDb, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to write classroom_db.json:", e);
+  }
+}
+
+// GET API to fetch documents or collections
+app.get("/api/db-get", (req, res) => {
+  const reqPath = req.query.path as string;
+  const isDoc = req.query.type === "doc";
+  
+  if (!reqPath) {
+    return res.status(400).json({ error: "Path parameter is required" });
+  }
+
+  // Clean path
+  const cleanPath = reqPath.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+
+  if (isDoc) {
+    const docData = memoryDb[cleanPath] || null;
+    return res.json({ data: docData, exists: !!docData });
+  } else {
+    // Collection mode: find all documents that are direct children of this collection path
+    const prefix = cleanPath + "/";
+    const docs: { id: string; data: any }[] = [];
+    
+    for (const [key, val] of Object.entries(memoryDb)) {
+      if (key.startsWith(prefix)) {
+        const subPath = key.substring(prefix.length);
+        // Ensure it's a direct child (doesn't contain more slashes)
+        if (subPath && !subPath.includes("/")) {
+          docs.push({ id: subPath, data: val });
+        }
+      }
+    }
+    return res.json({ docs });
+  }
+});
+
+// POST API to write/update documents
+app.post("/api/db-set", (req, res) => {
+  const { path: reqPath, data, merge } = req.body;
+  
+  if (!reqPath) {
+    return res.status(400).json({ error: "Path parameter is required" });
+  }
+
+  const cleanPath = reqPath.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  
+  if (merge && memoryDb[cleanPath]) {
+    memoryDb[cleanPath] = { ...memoryDb[cleanPath], ...data };
+  } else {
+    memoryDb[cleanPath] = data;
+  }
+  
+  saveDb();
+  return res.json({ success: true });
+});
+
+// POST API to delete documents (and recursively nested child documents)
+app.post("/api/db-delete", (req, res) => {
+  const { path: reqPath } = req.body;
+  
+  if (!reqPath) {
+    return res.status(400).json({ error: "Path parameter is required" });
+  }
+
+  const cleanPath = reqPath.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  
+  // Exclude document itself
+  delete memoryDb[cleanPath];
+
+  // Exclude all sub-collections
+  const prefix = cleanPath + "/";
+  for (const key of Object.keys(memoryDb)) {
+    if (key.startsWith(prefix)) {
+      delete memoryDb[key];
+    }
+  }
+
+  saveDb();
+  return res.json({ success: true });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

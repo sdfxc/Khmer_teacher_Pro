@@ -3,8 +3,7 @@ import {
   Award, Trophy, Smartphone, Sparkles, User, RefreshCw, CheckCircle2, 
   XCircle, Timer, AlertCircle, HelpCircle, ArrowRight, Heart
 } from 'lucide-react';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType, doc, getDoc, setDoc, onSnapshot, collection, getDocs, isFirebasePlaceholder } from '../lib/firebase';
 import { Student, QuizCard, Question } from '../types';
 import confetti from 'canvas-confetti';
 import FormulaRenderer from './FormulaRenderer';
@@ -27,6 +26,7 @@ export default function StudentPlayView() {
   // Live game/class state
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeCardState, setActiveCardState] = useState<'answering' | 'revealed'>('answering');
+  const [pointsPerQuestion, setPointsPerQuestion] = useState<number>(100);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [chapters, setChapters] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -91,6 +91,9 @@ export default function StudentPlayView() {
         setActiveRoomId(data.activeRoomId || null);
         setActiveCardId(data.activeCardId || null);
         setActiveCardState(data.activeCardState || 'answering');
+        if (typeof data.pointsPerQuestion === 'number') {
+          setPointsPerQuestion(data.pointsPerQuestion);
+        }
       }
     }, (err) => {
       console.error("Live Class snapshot failed:", err);
@@ -228,8 +231,7 @@ export default function StudentPlayView() {
     
     let calculatedPoints = 0;
     if (isCorrect) {
-      // Speed multiplier (from 25s down): 50 base points + up to 50 speed points!
-      calculatedPoints = 50 + Math.round((localTimeLeft / 25) * 50);
+      calculatedPoints = pointsPerQuestion;
       setPointsEarned(calculatedPoints);
       setAnsweredState('correct');
       playChime(true);
@@ -303,7 +305,8 @@ export default function StudentPlayView() {
           score: 0,
           emoji: selectedEmoji,
           gender: 'ប្រុស',
-          status: 'សកម្ម'
+          status: 'សកម្ម',
+          isApproved: false
         };
 
         const docRef = doc(db, 'teachers', teacherId, 'classes', classId, 'students', newId);
@@ -352,6 +355,12 @@ export default function StudentPlayView() {
             <h3 className="text-xl font-black text-white">ចុះឈ្មោះចូលបន្ទប់ live</h3>
             <p className="text-[10px] uppercase font-black tracking-wider text-indigo-400">Smart student response cell</p>
           </div>
+
+          {isFirebasePlaceholder && (
+            <div className="p-3.5 bg-amber-500/10 border border-solid border-amber-500/25 rounded-2xl text-[11px] leading-relaxed text-amber-400 font-bold text-left">
+              💡 <strong className="text-amber-300">សាកល្បងរហ័ស (Local Test Mode)៖</strong> ចុច JOIN PLAY ដើម្បីសាកល្បងភ្លាមៗ! បើក Tab ថ្មីលើ browser នេះដើម្បីមើលអេក្រង់សិស្ស និងអេក្រង់គ្រូជាមួយគ្នា។ លោកគ្រូ-អ្នកគ្រូក៏អាចចុច <strong className="text-indigo-400 text-xs">"Setup Firebase"</strong> នៅផ្នែកខាងលើ AI Studio ដើម្បីភ្ជាប់ទូរស័ព្ទពិតៗ។
+            </div>
+          )}
 
           {errorMsg && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-center gap-2">
@@ -406,6 +415,98 @@ export default function StudentPlayView() {
             <span>ចូលរួមបន្ទប់លេង (JOIN PLAY)</span>
           </button>
         </form>
+      </div>
+    );
+  }
+
+  // Waiting for Approval state
+  if (studentId && joinedStudent && joinedStudent.isApproved === false && !joinedStudent.isDeclined) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-6 items-center justify-center relative select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_100%)] pointer-events-none" />
+        
+        <div className="w-full max-w-sm bg-slate-900/40 border border-slate-800/80 p-8 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6 text-center">
+          <div className="relative">
+            <div className="w-20 h-20 bg-indigo-600/10 border-2 border-indigo-500/20 rounded-[2rem] flex items-center justify-center text-3xl mx-auto animate-pulse">
+              {joinedStudent.emoji || "🧑‍🎓"}
+            </div>
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center text-[10px] text-white font-extrabold animate-bounce">
+              ⏳
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xl font-black text-white">{joinedStudent.name}</h3>
+            <p className="text-xs text-amber-400 font-bold bg-amber-500/10 px-4 py-2 rounded-full inline-block border border-amber-500/20">
+              កំពុងរង់ចាំគ្រូអនុញ្ញាតចូលលេង...
+            </p>
+            <p className="text-[10px] uppercase font-black tracking-wider text-slate-400 mt-2">
+              (Waiting for teacher approval to join)
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-950/60 rounded-2xl text-left text-xs border border-slate-900/80 leading-relaxed font-semibold text-slate-300">
+            👋 សូមរង់ចាំលោកគ្រូ-អ្នកគ្រូអនុញ្ញាត! ឈ្មោះរបស់អ្នកត្រូវបានបញ្ចូលទៅកាន់បញ្ជីស្នើសុំរបស់លោកគ្រូ-អ្នកគ្រូហើយ។ នៅពេលលោកគ្រូ-អ្នកគ្រូចុច "អនុញ្ញាត" អ្នកនឹងអាចចូលរួមលេង Quiz ជាមួយមិត្តភក្តិភ្លាមៗ។
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                localStorage.removeItem(`my_student_id_${classId}`);
+                setStudentId(null);
+                setJoinedStudent(null);
+              } catch (err) {
+                console.error(err);
+              }
+            }}
+            className="w-full py-3 bg-red-650 hover:bg-red-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer select-none border-none text-center"
+          >
+            បោះបង់ ឬចុះឈ្មោះឡើងវិញ (Cancel or Re-register)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (studentId && joinedStudent && joinedStudent.isDeclined) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-6 items-center justify-center relative select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.06)_0%,transparent_100%)] pointer-events-none" />
+        
+        <div className="w-full max-w-sm bg-slate-900/40 border border-red-900/30 p-8 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6 text-center">
+          <div className="relative">
+            <div className="w-20 h-20 bg-red-600/10 border-2 border-red-500/20 rounded-[2rem] flex items-center justify-center text-3xl mx-auto animate-pulse">
+              ❌
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xl font-black text-white">{joinedStudent.name}</h3>
+            <p className="text-xs text-red-400 font-bold bg-red-500/10 px-4 py-2 rounded-full inline-block border border-red-500/20">
+              ការស្នើសុំត្រូវបានបដិសេធ (Request Declined)
+            </p>
+            <p className="text-[10px] uppercase font-black tracking-wider text-slate-400 mt-2">
+              (The teacher declined your join request)
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-950/60 rounded-2xl text-left text-xs border border-red-950/50 leading-relaxed font-semibold text-slate-350">
+            សុំទោសលោកគ្រូ-អ្នកគ្រូបានបដិសេធការស្នើសុំចូលរួមលេងរបស់អ្នក។ សូមព្យាយាមចុះឈ្មោះម្តងទៀតជាមួយឈ្មោះផ្សេង។
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              localStorage.removeItem(`my_student_id_${classId}`);
+              setStudentId(null);
+              setJoinedStudent(null);
+            }}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer select-none border-none text-center"
+          >
+            ចុះឈ្មោះជាថ្មី (Register Again)
+          </button>
+        </div>
       </div>
     );
   }
@@ -530,8 +631,8 @@ export default function StudentPlayView() {
             </div>
 
             {/* Question description card */}
-            <div className="flex-1 bg-slate-900/40 border border-slate-800/80 p-6 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-lg min-h-[140px] mb-6">
-              <h2 className="text-base sm:text-lg font-black text-white leading-relaxed">
+            <div className="flex-1 bg-slate-900/40 border border-slate-800/80 p-6 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-lg min-h-[140px] mb-6 overflow-hidden max-w-full">
+              <h2 className="text-base sm:text-lg font-black text-white leading-relaxed break-words whitespace-normal word-break-break-word max-w-full">
                 <FormulaRenderer text={currentQuestion.text || ''} />
               </h2>
             </div>
@@ -552,12 +653,12 @@ export default function StudentPlayView() {
                   <button
                     key={i}
                     onClick={() => handleSelectOption(i)}
-                    className={`w-full p-4 rounded-2xl flex items-center gap-3 text-left transition-all text-white cursor-pointer select-none border-none shadow-md ${activeColor}`}
+                    className={`w-full p-4 rounded-2xl flex items-center gap-3 text-left transition-all text-white cursor-pointer select-none border-none shadow-md overflow-hidden max-w-full ${activeColor}`}
                   >
                     <span className="w-7 h-7 rounded-xl bg-black/20 flex items-center justify-center font-black text-xs shrink-0 select-none">
                       {optPrefix}
                     </span>
-                    <span className="text-xs font-black select-none leading-snug">
+                    <span className="text-xs font-black select-none leading-snug break-words whitespace-normal word-break-break-word flex-1">
                       <FormulaRenderer text={opt || ''} />
                     </span>
                   </button>

@@ -2,5 +2,7 @@
   "name": "Remix: EduSpin Quiz Master",
   "description": "An interactive classroom game with a student randomizer and AI-powered flashcard quizzes generated from lesson content.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
