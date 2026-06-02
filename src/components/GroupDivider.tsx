@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, Plus, Minus, Shuffle, Download, FileSpreadsheet, Award, Check, TrendingUp, Trophy, Loader2, Cloud } from 'lucide-react';
 import { Student, TeacherAccount } from '../types';
 import * as XLSX from 'xlsx';
-import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, doc, getDoc, setDoc } from '../lib/firebase';
 
 interface GroupDividerProps {
   students: Student[];

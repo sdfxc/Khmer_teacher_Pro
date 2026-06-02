@@ -1049,6 +1049,20 @@ export default function StudentLobby({
           </div>
 
           {/* Cambodian Advisory callouts to handle Google Cloud Run Sandbox 404/403 errors */}
+          {window.location.origin.includes('ais-dev-') && (
+            <div className="w-full text-left bg-rose-50 dark:bg-rose-950/40 border-2 border-solid border-rose-200 dark:border-rose-900 p-4 rounded-2xl mb-4 text-xs leading-relaxed text-rose-800 dark:text-rose-300 shadow-sm animate-pulse">
+              <p className="font-black flex items-center gap-1.5 mb-1 text-[13px]">
+                ⚠️ ការព្រមានអំពីការតភ្ជាប់ (Connection Warning):
+              </p>
+              <p className="font-semibold text-[11px]">
+                អ្នកកំពុងបើកបន្ទប់នៅលើ <strong className="underline">ប្រព័ន្ធអភិវឌ្ឍន៍ឯកជន (Developer Sandbox - ais-dev)</strong>។ ប្រសិនបើសិស្សស្កេន QR នេះជាមួយទូរស័ព្ទដៃ វានឹង <strong className="text-rose-600 font-bold">បង្ហាញកំហុស 403 (មិនអនុញ្ញាត)</strong> ព្រោះវាជាប្រព័ន្ធសម្ងាត់របស់អ្នកបង្កើត!
+              </p>
+              <p className="mt-1.5 font-semibold text-[11px]">
+                👉 <strong className="text-indigo-700 dark:text-indigo-300">ដំណោះស្រាយ៖</strong> សូមចម្លងរួចបើក **Shared App URL (តំណភ្ជាប់ដែលបាន Share) គឺ "https://ais-pre-..."** នៅក្នុងកម្មវិធីរុករក (Browser) ថ្មី រួចចូលប្រើប្រាស់គណនីគ្រូនៅទីនោះ ដើម្បីបង្កើតបន្ទប់ទើបសិស្សអាចស្កេនលេងបានជោគជ័យ។
+              </p>
+            </div>
+          )}
+
           {linkType === 'public' ? (
             <div className="w-full text-left bg-amber-50 dark:bg-amber-950/20 border border-solid border-amber-250 dark:border-amber-900/40 p-3 rounded-2xl mb-4 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
               <span className="font-bold">⚠️ ប្រសិនបើស្កេនទៅឃើញ "Page not found (404)"៖</span> សូមធានាថាអ្នកគ្រូបានចុចប៊ូតុង <strong className="text-indigo-600 dark:text-indigo-400">"Share"</strong> នៅផ្នែកខាងលើនៃ AI Studio រួចរាល់ហើយ ដើម្បីបើកដំណើរការវេបសាយនេះជាសាធារណៈ!

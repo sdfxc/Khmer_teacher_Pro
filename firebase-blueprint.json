@@ -57,6 +57,10 @@
     "/teachers/{teacherId}/classes/{classId}/students/{studentId}": {
       "schema": "Student",
       "description": "Collection of students inside a class."
+    },
+    "/teachers/{teacherId}/classes/{classId}/groupsData/{docId}": {
+      "schema": "object",
+      "description": "Divided classroom groups data."
     }
   }
 }

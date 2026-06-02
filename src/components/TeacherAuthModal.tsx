@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Key, School, BookOpen, UserPlus, LogIn, CheckCircle, Loader2 } from 'lucide-react';
 import { TeacherAccount } from '../types';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, doc, getDoc, setDoc } from '../lib/firebase';
 
 interface TeacherAuthModalProps {
   isOpen: boolean;

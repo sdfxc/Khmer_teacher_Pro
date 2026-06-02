@@ -51,6 +51,10 @@ service cloud.firestore {
       
       match /classes/{classId} {
         allow read, write: if true;
+        
+        match /groupsData/{docId} {
+          allow read, write: if true;
+        }
       }
       
       match /classes/{classId}/students/{studentId} {
