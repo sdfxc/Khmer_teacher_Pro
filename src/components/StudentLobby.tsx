@@ -48,8 +48,9 @@ export default function StudentLobby({
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
 
   const [pointsPerQuestion, setPointsPerQuestion] = useState<number>(100);
+  const [autoApprove, setAutoApprove] = useState<boolean>(false);
 
-  // Read pointsPerQuestion setting from Class document in Firestore
+  // Read pointsPerQuestion and autoApprove settings from Class document in Firestore
   useEffect(() => {
     if (!activeClassId) return;
     const tId = teacher?.id || 'local';
@@ -59,6 +60,9 @@ export default function StudentLobby({
         const data = docSnap.data();
         if (data && typeof data.pointsPerQuestion === 'number') {
           setPointsPerQuestion(data.pointsPerQuestion);
+        }
+        if (data && typeof data.autoApprove === 'boolean') {
+          setAutoApprove(data.autoApprove);
         }
       }
     });
@@ -74,6 +78,19 @@ export default function StudentLobby({
       await setDoc(classDocRef, { pointsPerQuestion: pts }, { merge: true });
     } catch (err) {
       console.error("Failed to sync points definition:", err);
+    }
+  };
+
+  const handleToggleAutoApprove = async () => {
+    const nextVal = !autoApprove;
+    setAutoApprove(nextVal);
+    if (!activeClassId) return;
+    const tId = teacher?.id || 'local';
+    try {
+      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+      await setDoc(classDocRef, { autoApprove: nextVal }, { merge: true });
+    } catch (err) {
+      console.error("Failed to sync auto-approve:", err);
     }
   };
 
@@ -1015,37 +1032,7 @@ export default function StudentLobby({
           
           <div className="w-full flex items-center justify-center gap-2 mb-3">
             <Smartphone className="w-6 h-6 text-indigo-500 animate-bounce" />
-            <span className="text-sm font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">បន្ទប់ឆ្លើយតប live តាមទូរស័ព្ទ</span>
-          </div>
-
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-3 font-semibold">
-            សិស្សប្រើប្រាស់ទូរស័ព្ទដៃស្កេន QR Code ខាងក្រោម ឬចុចតាមរយៈតំណភ្ជាប់ (Link) ដើម្បីចុះឈ្មោះ និងចូលរួមឆ្លើយសំណួរយកពិន្ទុភ្លាមៗ!
-          </p>
-
-          {/* Quick link type switcher targeting Sandbox Cloud Run limitations */}
-          <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl mb-4 w-full max-w-md border border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setLinkType('public')}
-              className={`flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all border-none outline-none cursor-pointer ${
-                linkType === 'public'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              🌐 តំណភ្ជាប់សាធារណៈ (សិស្សលេង)
-            </button>
-            <button
-              type="button"
-              onClick={() => setLinkType('dev')}
-              className={`flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all border-none outline-none cursor-pointer ${
-                linkType === 'dev'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              💻 សាកល្បងផ្ទាល់ខ្លួន (គ្រូតេស្ត)
-            </button>
+            <span className="text-sm font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">បន្ទប់ឆ្លើយតប Live (Live Interaction Board)</span>
           </div>
 
           {/* Cambodian Advisory callouts to handle Google Cloud Run Sandbox 404/403 errors */}
@@ -1058,54 +1045,42 @@ export default function StudentLobby({
                 អ្នកកំពុងបើកបន្ទប់នៅលើ <strong className="underline">ប្រព័ន្ធអភិវឌ្ឍន៍ឯកជន (Developer Sandbox - ais-dev)</strong>។ ប្រសិនបើសិស្សស្កេន QR នេះជាមួយទូរស័ព្ទដៃ វានឹង <strong className="text-rose-600 font-bold">បង្ហាញកំហុស 403 (មិនអនុញ្ញាត)</strong> ព្រោះវាជាប្រព័ន្ធសម្ងាត់របស់អ្នកបង្កើត!
               </p>
               <p className="mt-1.5 font-semibold text-[11px]">
-                👉 <strong className="text-indigo-700 dark:text-indigo-300">ដំណោះស្រាយ៖</strong> សូមចម្លងរួចបើក **Shared App URL (តំណភ្ជាប់ដែលបាន Share) គឺ "https://ais-pre-..."** នៅក្នុងកម្មវិធីរុករក (Browser) ថ្មី រួចចូលប្រើប្រាស់គណនីគ្រូនៅទីនោះ ដើម្បីបង្កើតបន្ទប់ទើបសិស្សអាចស្កេនលេងបានជោគជ័យ។
+                👉 <strong className="text-indigo-700 dark:text-indigo-300">ដំណោះស្រាយ៖</strong> បើកបន្ទប់លេងជាមួយប៊ូតុង "តំណភ្ជាប់សាធារណៈ (សិស្សលេង)" ឬប្តូរទូរស័ព្ទដើម្បីធ្វើតេស្ត。
               </p>
             </div>
           )}
 
-          {linkType === 'public' ? (
-            <div className="w-full text-left bg-amber-50 dark:bg-amber-950/20 border border-solid border-amber-250 dark:border-amber-900/40 p-3 rounded-2xl mb-4 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-              <span className="font-bold">⚠️ ប្រសិនបើស្កេនទៅឃើញ "Page not found (404)"៖</span> សូមធានាថាអ្នកគ្រូបានចុចប៊ូតុង <strong className="text-indigo-600 dark:text-indigo-400">"Share"</strong> នៅផ្នែកខាងលើនៃ AI Studio រួចរាល់ហើយ ដើម្បីបើកដំណើរការវេបសាយនេះជាសាធារណៈ!
-            </div>
-          ) : (
-            <div className="w-full text-left bg-indigo-50 dark:bg-indigo-950/20 border border-solid border-indigo-250 dark:border-indigo-900/40 p-3 rounded-2xl mb-4 text-[11px] leading-relaxed text-indigo-800 dark:text-indigo-300">
-              <span className="font-bold">ℹ️ របៀបសាកល្បង៖</span> តំណភ្ជាប់នេះសម្រាប់សាកល្បងដោយបើក Tab ថ្មីលើកុំព្យូទ័រនេះ ឬឧបករណ៍ដែលបាន Log in គណនី Google ជាមួយគ្នា។ ប្រសិនបើស្កេនតាមទូរស័ព្ទផ្សេង វានឹងបង្ហាញ <strong className="text-red-500">"403 Forbidden"</strong>។
-            </div>
-          )}
-
-          <div className="flex flex-col md:flex-row items-center gap-6 mb-4 w-full justify-center">
-            {/* Dynamic QR Code */}
-            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-3xl border border-solid border-slate-200 dark:border-slate-800 shadow-md shrink-0 flex flex-col items-center gap-1.5 group hover:scale-[1.02] transition-all">
+          {/* QR Code & Instruction Lists inside flex-row layout */}
+          <div className="w-full flex flex-col sm:flex-row items-center gap-6 mt-2">
+            {/* Displaying actual QR Code */}
+            <div className="p-3 bg-white dark:bg-slate-955 rounded-2xl border border-solid border-slate-200 dark:border-slate-800 shadow-inner flex-shrink-0 animate-in zoom-in duration-300">
               <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(studentJoinLink)}`}
-                alt="QR Code For Joining" 
-                className="w-40 h-40 object-contain rounded-xl select-none"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(studentJoinLink)}`}
+                alt="QR Code"
+                className="w-28 h-28 sm:w-32 sm:h-32 object-contain"
+                referrerPolicy="no-referrer"
               />
-              <span className="text-[10px] font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase flex items-center gap-1">
-                <QrCode className="w-3 h-3" />
-                ស្កេនរូបដើម្បីចូលរួម
-              </span>
             </div>
 
             {/* Instruction Lists */}
             <div className="text-left space-y-3 flex-1 max-w-sm">
               <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">1</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">បើកកាមេរ៉ាទូរស័ព្ទ រួចស្កេនរូប QR Code ឬបើក Link ខាងក្រោម។</p>
+                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">1</span>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">បើកកាមេរ៉ាទូរស័ព្ទ រួចស្កេនរូប QR Code ឬបើក Link ខាងក្រោម。</p>
               </div>
               <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">2</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">វាយបញ្ចូលឈ្មោះរបស់អ្នក (ជាអក្សរខ្មែរ) រួចជ្រើសរើស Emoji តំណាង។</p>
+                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">2</span>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">វាយបញ្ចូលឈ្មោះរបស់អ្នក (ជាអក្សរខ្មែរ) រួចជ្រើសរើស Emoji តំណាង。</p>
               </div>
               <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">3</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">រង់ចាំលោកគ្រូ-អ្នកគ្រូជ្រើសរើស និងបើកសន្លឹកប័ណ្ណសំណួរលើ "ក្ដារសំណួរ" !</p>
+                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">3</span>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">រង់ចាំលោកគ្រូអនុញ្ញាតឱ្យសិស្សចូលលេង ឬអនុញ្ញាតស្វ័យប្រវត្តិ!</p>
               </div>
             </div>
           </div>
 
-          {/* Joining Link Output */}
-          <div className="w-full flex items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 mt-2">
+                    {/* Joining Link Output */}
+          <div className="w-full flex items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-955 rounded-2xl border border-slate-200 dark:border-slate-800 mt-2">
             <input 
               type="text" 
               readOnly 
@@ -1128,7 +1103,7 @@ export default function StudentLobby({
 
         {/* Action Controls & Realtime Statistics Card */}
         <div className="lg:col-span-5 flex flex-col gap-4">
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-950 text-white rounded-[2rem] p-6 flex flex-col justify-between flex-1 border border-indigo-950 shadow-lg relative overflow-hidden">
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-950 text-white rounded-[2rem] p-6 flex flex-col justify-between flex-1 border border-indigo-950 shadow-lg relative overflow-hidden text-left font-sans">
             <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-500/10 rounded-full animate-pulse" />
             
             <div className="flex justify-between items-start">
@@ -1145,7 +1120,7 @@ export default function StudentLobby({
 
             <div className="space-y-4 my-6">
               <div className="flex items-center justify-between text-xs py-1.5 border-b border-indigo-900/40">
-                <span className="text-slate-400 font-semibold">សកម្មភាពឆ្លើយតប live៖</span>
+                <span className="text-slate-400 font-semibold">សកម្មភាពឆ្លើយតប Live៖</span>
                 {isUsingSimulatedPlayers ? (
                   <span className="text-emerald-400 font-black flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse shrink-0" />
@@ -1207,63 +1182,117 @@ export default function StudentLobby({
         </div>
       </div>
 
-      {/* Pending Approval Join Requests Container */}
-      {pendingApprovalStudents.length > 0 && (
-        <div className="mb-6 p-6 bg-amber-500/5 dark:bg-amber-500/10 border-2 border-dashed border-amber-500/30 rounded-[2.5rem] flex flex-col animate-in fade-in duration-300">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-amber-500/20 pb-4 mb-4 gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-amber-850 dark:text-amber-400">សិស្សរង់ចាំការអនុញ្ញាត (Join Requests)</h3>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-0.5">
-                  ចំនួន <span className="text-amber-500">{pendingApprovalStudents.length} នាក់</span> កំពុងរង់ចាំលោកគ្រូអនុញ្ញាតចូលលេង Quiz
-                </p>
-              </div>
+      {/* Student Approval & Instant Entry Control Desk */}
+      <div className="mb-6 p-6 bg-slate-50 dark:bg-slate-900/40 border-2 border-solid border-slate-200 dark:border-slate-800 rounded-[2.5rem] flex flex-col animate-in fade-in duration-300 text-left">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 mb-4 gap-4 border-b border-solid border-slate-200/60 dark:border-slate-850">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl border border-indigo-100 dark:border-indigo-900 text-indigo-650 dark:text-indigo-400 shrink-0">
+              <UserCheck className="w-5 h-5 flex items-center justify-center" />
             </div>
-            
+            <div>
+              <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <span>កន្លែងអនុញ្ញាតឱ្យសិស្សចូលលេង 🧑‍🏫</span>
+                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/80 text-indigo-650 dark:text-indigo-400 font-extrabold px-2 py-0.5 rounded-full select-none uppercase tracking-wider">
+                  Approval Center
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold mt-0.5">
+                ពិនិត្យ និងអនុញ្ញាតសិស្សដែលបានស្កេន QR Code ចុះឈ្មោះចូលរួមលេងក្នុងថ្នាក់រៀន
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Auto-Approve Setting Toggle */}
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-955 px-4 py-2 rounded-2xl border border-solid border-slate-200 dark:border-slate-850 shadow-sm shrink-0">
+            <div className="text-left">
+              <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">របៀបចុះឈ្មោះចូល (Join Style)</p>
+              <p className="text-xs font-bold text-slate-705 dark:text-slate-350">
+                {autoApprove ? '⚡ អនុញ្ញាតស្វ័យប្រវត្តិ (Auto)' : '🔒 គ្រូយល់ព្រមផ្ទាល់ (Manual)'}
+              </p>
+            </div>
             <button
               type="button"
-              onClick={handleApproveAllStudents}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer select-none active:scale-95 border-none shadow-sm shadow-amber-550/10"
+              onClick={handleToggleAutoApprove}
+              className={`w-12 h-6.5 rounded-full transition-colors relative cursor-pointer outline-none border-none ${
+                autoApprove ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-800'
+              }`}
+              title="ចុចដើម្បីប្តូររបៀបឆ្លងកាត់ស្វ័យប្រវត្តិ"
             >
-              អនុញ្ញាតទាំងអស់ (Approve All)
+              <div
+                className={`w-5 h-5 rounded-full bg-white absolute top-0.75 shadow transition-transform ${
+                  autoApprove ? 'right-1' : 'left-1'
+                }`}
+              />
             </button>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 max-h-[220px] overflow-y-auto custom-scrollbar p-1">
-            {pendingApprovalStudents.map(student => (
-              <div
-                key={student.id}
-                className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-2xl shadow-sm"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-2xl select-none">{student.emoji || "🧑‍🎓"}</span>
-                  <p className="text-xs font-black truncate text-slate-800 dark:text-slate-200">{student.name}</p>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                  <button
-                    type="button"
-                    onClick={() => handleApproveStudent(student.id)}
-                    className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md"
-                    title="អនុញ្ញាត (Approve)"
-                  >
-                    <Check className="w-4 h-4 text-white" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeclineStudent(student.id)}
-                    className="w-7 h-7 bg-red-650 hover:bg-red-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md animate-in fade-in"
-                    title="បដិសេធ (Decline)"
-                  >
-                    <XCircle className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
-      )}
+
+        {/* Requests List */}
+        {pendingApprovalStudents.length > 0 ? (
+          <div className="space-y-3.5">
+            <div className="flex justify-between items-center bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 p-3 rounded-2xl text-[11px] leading-relaxed text-amber-850 dark:text-amber-305">
+              <span className="font-bold">
+                ⚠️ ចំនួន <strong className="text-[13px]">{pendingApprovalStudents.length} នាក់</strong> កំពុងរង់ចាំអ្នកគ្រូចុចអនុញ្ញាតចូលលេង៖
+              </span>
+              <button
+                type="button"
+                onClick={handleApproveAllStudents}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-[10px] rounded-xl cursor-pointer select-none border-none shadow-sm transition-all text-center uppercase tracking-wider"
+              >
+                យល់ព្រមទាំងអស់ (Approve All)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 max-h-[180px] overflow-y-auto custom-scrollbar p-1">
+              {pendingApprovalStudents.map(student => (
+                <div
+                  key={student.id}
+                  className="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-205 dark:border-slate-850 rounded-2xl shadow-sm hover:scale-[1.01] transition-all"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-2xl select-none animate-pulse">{student.emoji || "🧑‍🎓"}</span>
+                    <p className="text-xs font-black truncate text-slate-800 dark:text-slate-200">{student.name}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => handleApproveStudent(student.id)}
+                      className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md active:scale-90"
+                      title="អនុញ្ញាត (Approve)"
+                    >
+                      <Check className="w-4 h-4 text-white" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeclineStudent(student.id)}
+                      className="w-7 h-7 bg-red-650 hover:bg-red-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md active:scale-90"
+                      title="បដិសេធ (Decline)"
+                    >
+                      <XCircle className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="py-6 text-center text-slate-400 dark:text-slate-500 font-bold text-xs flex flex-col items-center justify-center gap-2.5 rounded-2xl bg-white dark:bg-slate-955 p-4 border border-dashed border-slate-200/80 dark:border-slate-800">
+            <div className="relative">
+              <div className="w-10 h-10 bg-indigo-500/5 rounded-full flex items-center justify-center text-xl animate-pulse">
+                ⏳
+              </div>
+              <span className="absolute inset-0 border-2 border-indigo-400/25 rounded-full animate-ping pointer-events-none" />
+            </div>
+            <div className="max-w-md space-y-1">
+              <p className="text-slate-700 dark:text-slate-350 font-black">មិនទាន់មានសិស្សរង់ចាំការអនុញ្ញាតឡើយ (No Pending Requests)</p>
+              <p className="text-[10px] text-slate-450 dark:text-slate-500 leading-normal max-w-sm mx-auto">
+                នៅពេលសិស្សស្កេនរូបភាព QR ខាងលើ រួចវាយបញ្ចូលកម្រងឈ្មោះគណនីបណ្តោះអាសន្ន ពួកគេនឹងលោតបង្ហាញនៅទីនេះភា្លមៗ សម្រាប់ឱ្យអ្នកគ្រូចុចអនុញ្ញាតឱ្យសិស្សចូលលេង។
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Roster of Online Students */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800/80 p-6 flex flex-col min-h-[300px]">

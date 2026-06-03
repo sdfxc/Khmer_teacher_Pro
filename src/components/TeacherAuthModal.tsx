@@ -18,6 +18,7 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   
   // Register fields
   const [regName, setRegName] = useState('');
@@ -29,6 +30,19 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
   
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Save/load credentials with memory
+  useEffect(() => {
+    if (isOpen) {
+      const savedUser = localStorage.getItem('remember_me_teacher_username') || '';
+      const savedPass = localStorage.getItem('remember_me_teacher_password') || '';
+      if (savedUser) {
+        setLoginUsername(savedUser);
+        setLoginPassword(savedPass);
+        setRememberMe(true);
+      }
+    }
+  }, [isOpen]);
 
   // Reset states on change view
   useEffect(() => {
@@ -67,6 +81,13 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
 
       // 2. Validate password
       if (found.password === loginPassword) {
+        if (rememberMe) {
+          localStorage.setItem('remember_me_teacher_username', cleanUsername);
+          localStorage.setItem('remember_me_teacher_password', loginPassword);
+        } else {
+          localStorage.removeItem('remember_me_teacher_username');
+          localStorage.removeItem('remember_me_teacher_password');
+        }
         localStorage.setItem('logged_in_teacher', JSON.stringify(found));
         onLoginSuccess(found);
         setSuccessMsg('ការចូលប្រើប្រាស់ជោគជ័យ និងបានទាញយកទិន្នន័យពី Cloud!');
@@ -125,6 +146,8 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
       // 3. Write to Firestore cloud
       await setDoc(teacherDocRef, newTeacher);
 
+      localStorage.setItem('remember_me_teacher_username', cleanUsername);
+      localStorage.setItem('remember_me_teacher_password', regPassword);
       localStorage.setItem('logged_in_teacher', JSON.stringify(newTeacher));
       onLoginSuccess(newTeacher);
       setSuccessMsg('បង្កើតគណនេយ្យគ្រូបង្រៀននៅលើ Cloud និងចូលប្រើប្រាស់ជោគជ័យ!');
@@ -249,6 +272,21 @@ export default function TeacherAuthModal({ isOpen, onClose, onLoginSuccess }: Te
                         {showLoginPassword ? '🙈' : '🙉'}
                       </button>
                     </div>
+                  </div>
+
+                  {/* Remember Me Checkbox with full touch states */}
+                  <div className="flex items-center justify-between py-1 animate-in fade-in">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4.5 h-4.5 text-indigo-600 bg-slate-50 border-slate-250 rounded focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-slate-600 select-none">
+                        ចងចាំគណនីបង្រៀនរបស់ខ្ញុំ (Remember Me)
+                      </span>
+                    </label>
                   </div>
 
                   <button

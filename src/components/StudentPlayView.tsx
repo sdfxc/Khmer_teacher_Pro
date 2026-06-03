@@ -30,6 +30,7 @@ export default function StudentPlayView() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [chapters, setChapters] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [autoApprove, setAutoApprove] = useState<boolean>(false);
 
   // Local play state
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -39,7 +40,7 @@ export default function StudentPlayView() {
   const [pointsEarned, setPointsEarned] = useState<number>(0);
   const [localTimeLeft, setLocalTimeLeft] = useState(25);
 
-  const emojisList = ["🧑‍🎓", "🦊", "🦁", "🐼", "🐨", "🦄", "👑", "🚀", "⚡", "🔥", "⚽", "⭐", "🎉", "👾", "🦊", "🐻", "🐝", "🐙", "💎", "🎯"];
+  const emojisList = ["🧑‍🎓", "🦊", "🦁", "🐼", "🐨", "🦄", "👑", "🚀", "⚡", "🔥", "⚽", "⭐", "🎉", "👾", "🐯", "🐻", "🐝", "🐙", "💎", "🎯"];
 
   // Chime Sound synthesizers
   const playChime = (correct: boolean) => {
@@ -94,6 +95,7 @@ export default function StudentPlayView() {
         if (typeof data.pointsPerQuestion === 'number') {
           setPointsPerQuestion(data.pointsPerQuestion);
         }
+        setAutoApprove(data.autoApprove || false);
       }
     }, (err) => {
       console.error("Live Class snapshot failed:", err);
@@ -306,7 +308,7 @@ export default function StudentPlayView() {
           emoji: selectedEmoji,
           gender: 'ប្រុស',
           status: 'សកម្ម',
-          isApproved: false
+          isApproved: autoApprove
         };
 
         const docRef = doc(db, 'teachers', teacherId, 'classes', classId, 'students', newId);

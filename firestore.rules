@@ -44,21 +44,38 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      allow create: if isValidTeacher(incoming());
-      allow get: if true;
-      allow update: if isValidTeacher(incoming()) && existing().password == incoming().password;
-      allow delete: if existing() != null;
+      allow get: if isValidId(teacherId);
+      allow create: if isValidId(teacherId) && isValidTeacher(incoming());
+      allow update: if isValidId(teacherId) && isValidTeacher(incoming()) && existing().password == incoming().password;
+      allow delete: if isValidId(teacherId) && existing() != null;
       
       match /classes/{classId} {
-        allow read, write: if true;
+        allow get: if isValidId(teacherId) && isValidId(classId);
+        allow list: if isValidId(teacherId);
+        allow create: if isValidId(teacherId) && isValidId(classId) 
+          && exists(/databases/$(database)/documents/teachers/$(teacherId))
+          && isValidClass(incoming());
+        allow update: if isValidId(teacherId) && isValidId(classId) && isValidClass(incoming());
+        allow delete: if isValidId(teacherId) && isValidId(classId) && existing() != null;
         
         match /groupsData/{docId} {
-          allow read, write: if true;
+          allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(docId);
+          allow list: if isValidId(teacherId) && isValidId(classId);
+          allow create, update: if isValidId(teacherId) && isValidId(classId) && isValidId(docId)
+            && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId));
+          allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(docId) && existing() != null;
         }
       }
       
       match /classes/{classId}/students/{studentId} {
-        allow read, write: if true;
+        allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId);
+        allow list: if isValidId(teacherId) && isValidId(classId);
+        allow create: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
+          && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId))
+          && isValidStudent(incoming());
+        allow update: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
+          && isValidStudent(incoming());
+        allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId) && existing() != null;
       }
     }
   }

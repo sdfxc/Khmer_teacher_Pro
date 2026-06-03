@@ -10,10 +10,31 @@ import {
   onSnapshot as firestoreOnSnapshot,
   getDocFromServer
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import defaultFirebaseConfig from '../../firebase-applet-config.json';
 
+// Support Vercel/GitHub deployments with Vite environment variables
+const loadFirebaseConfig = () => {
+  const metaEnv = (import.meta as any).env || {};
+  if (
+    metaEnv.VITE_FIREBASE_API_KEY &&
+    metaEnv.VITE_FIREBASE_PROJECT_ID
+  ) {
+    return {
+      apiKey: metaEnv.VITE_FIREBASE_API_KEY,
+      authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || `${metaEnv.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId: metaEnv.VITE_FIREBASE_PROJECT_ID,
+      firestoreDatabaseId: metaEnv.VITE_FIREBASE_DATABASE_ID || defaultFirebaseConfig.firestoreDatabaseId || '(default)',
+      storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || `${metaEnv.VITE_FIREBASE_PROJECT_ID}.firebasestorage.app`,
+      messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+      appId: metaEnv.VITE_FIREBASE_APP_ID || '',
+    };
+  }
+  return defaultFirebaseConfig;
+};
+
+const firebaseConfig = loadFirebaseConfig();
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 
 export enum OperationType {
   CREATE = 'create',
