@@ -10,12 +10,61 @@ import FormulaRenderer from './FormulaRenderer';
 
 export default function StudentPlayView() {
   const urlParams = new URLSearchParams(window.location.search);
-  const classId = urlParams.get('classId') || '';
-  const teacherId = urlParams.get('teacherId') || '';
+  const initialClassId = urlParams.get('classId') || '';
+  const initialTeacherId = urlParams.get('teacherId') || '';
+
+  const [liveClassId, setLiveClassId] = useState<string>(initialClassId);
+  const [liveTeacherId, setLiveTeacherId] = useState<string>(initialTeacherId);
+  
+  const classId = liveClassId;
+  const teacherId = liveTeacherId;
 
   const [studentId, setStudentId] = useState<string | null>(() => {
-    return localStorage.getItem(`my_student_id_${classId}`) || null;
+    return (classId ? localStorage.getItem(`my_student_id_${classId}`) : null) || null;
   });
+
+  const [enteredPin, setEnteredPin] = useState('');
+  const [pinResolved, setPinResolved] = useState(!!initialClassId && !!initialTeacherId);
+  const [pinError, setPinError] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+
+  useEffect(() => {
+    if (classId) {
+      const saved = localStorage.getItem(`my_student_id_${classId}`);
+      if (saved) {
+        setStudentId(saved);
+      }
+    }
+  }, [classId]);
+
+  const handleResolvePIN = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enteredPin.trim()) return;
+    setPinLoading(true);
+    setPinError('');
+    try {
+      const pinDocRef = doc(db, 'active_pins', enteredPin.trim());
+      const pinSnap = await getDoc(pinDocRef);
+      if (pinSnap.exists()) {
+        const data = pinSnap.data();
+        setLiveClassId(data.classId);
+        setLiveTeacherId(data.teacherId);
+        if (data.roomId) {
+          setActiveRoomId(data.roomId);
+        }
+        const newurl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?mode=student&classId=${data.classId}&teacherId=${data.teacherId}${data.roomId ? '&roomId=' + data.roomId : ''}`;
+        window.history.pushState({ path: newurl }, '', newurl);
+        setPinResolved(true);
+      } else {
+        setPinError('រកមិនឃើញលេខសម្គាល់បន្ទប់នេះទេ! សូមពិនិត្យមើលលេខ PIN ៦ខ្ទង់ឡើងវិញ ឬសួរគ្រូរបស់អ្នក។ (Game PIN not found)');
+      }
+    } catch (err: any) {
+      console.error("Resolve PIN error:", err);
+      setPinError('មានបញ្ហាក្នុងការភ្ជាប់ទៅកាន់ Cloud internet ។ (Pin resolution error)');
+    } finally {
+      setPinLoading(false);
+    }
+  };
 
   const [name, setName] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('🧑‍🎓');
@@ -39,6 +88,17 @@ export default function StudentPlayView() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [pointsEarned, setPointsEarned] = useState<number>(0);
   const [localTimeLeft, setLocalTimeLeft] = useState(25);
+
+  const [showGameZone, setShowGameZone] = useState(false);
+  const [activeGame, setActiveGame] = useState<'emoji' | 'sound' | 'moles' | null>(null);
+  const [showClassCelebration, setShowClassCelebration] = useState(false);
+  
+  // Game 1 states: emoji pop
+  const [bubbles, setBubbles] = useState<any[]>([]);
+  // Game 2 states: sound pad
+  const [activeNotePad, setActiveNotePad] = useState<string | null>(null);
+  // Game 3 states: whack a mole
+  const [molesList, setMolesList] = useState<any[]>([]);
 
   const emojisList = ["🧑‍🎓", "🦊", "🦁", "🐼", "🐨", "🦄", "👑", "🚀", "⚡", "🔥", "⚽", "⭐", "🎉", "👾", "🐯", "🐻", "🐝", "🐙", "💎", "🎯"];
 
@@ -199,6 +259,254 @@ export default function StudentPlayView() {
     }
   }, [activeCardState, answeredState, currentQuestion]);
 
+  // 6. Close Game Zone automatically when a new question arrives
+  useEffect(() => {
+    if (currentQuestion) {
+      setShowGameZone(false);
+    }
+  }, [currentQuestion]);
+
+  // 7. Shared Live Celebration listener
+  useEffect(() => {
+    if (!classId || !teacherId) return;
+
+    const classDocRef = doc(db, 'teachers', teacherId, 'classes', classId);
+    let lastCelebrationHandled = 0;
+    
+    const unsubscribe = onSnapshot(classDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data && data.celebrationTime && data.celebrationTime > lastCelebrationHandled) {
+          lastCelebrationHandled = data.celebrationTime;
+          // Trigger confetti
+          try {
+            confetti({
+              particleCount: 120,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          } catch (e) {}
+          
+          // Show full screen overlay
+          setShowClassCelebration(true);
+          setTimeout(() => {
+            setShowClassCelebration(false);
+          }, 4500);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [classId, teacherId]);
+
+  // 8. Emoji Pop Bubble Spawning and Float loop
+  useEffect(() => {
+    if (!showGameZone || activeGame !== 'emoji') {
+      setBubbles([]);
+      return;
+    }
+
+    const emojis = ["😂", "🥳", "😇", "😎", "🤩", "💖", "🎈", "🍬", "🦋", "✨"];
+    const initial = Array.from({ length: 4 }).map((_, idx) => ({
+      id: `bubble-${Date.now()}-${idx}-${Math.random()}`,
+      emoji: emojis[Math.floor(Math.random() * emojis.length)],
+      x: Math.random() * 80 + 10,
+      y: 110,
+      size: Math.random() * 20 + 45,
+      speed: Math.random() * 1.5 + 1.2,
+    }));
+    setBubbles(initial);
+
+    const spawnTimer = setInterval(() => {
+      setBubbles(prev => {
+        if (prev.length >= 6) return prev;
+        const newEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+        return [
+          ...prev,
+          {
+            id: `bubble-${Date.now()}-${Math.random()}`,
+            emoji: newEmoji,
+            x: Math.random() * 80 + 10,
+            y: 110,
+            size: Math.random() * 20 + 45,
+            speed: Math.random() * 1.5 + 1.2,
+          }
+        ];
+      });
+    }, 2000);
+
+    const floatTimer = setInterval(() => {
+      setBubbles(prev => 
+        prev
+          .map(b => ({ ...b, y: b.y - b.speed }))
+          .filter(b => b.y > -20)
+      );
+    }, 30);
+
+    return () => {
+      clearInterval(spawnTimer);
+      clearInterval(floatTimer);
+    };
+  }, [showGameZone, activeGame]);
+
+  // 9. Stress Smasher Whack-A-Mole layout triggers
+  useEffect(() => {
+    if (!showGameZone || activeGame !== 'moles') {
+      setMolesList([]);
+      return;
+    }
+
+    const stressors = ["ស្ត្រេស", "ធុញថប់", "លំហាត់ពិបាក", "ខ្ជិលច្រអូស", "ងងុយគេង", "ព្រួយបារម្ភ"];
+    const icons = ["😤", "🥱", "🥵", "😰", "😴", "🥶"];
+    const initial = Array.from({ length: 6 }).map((_, idx) => ({
+      id: idx,
+      isActive: false,
+      name: stressors[idx % stressors.length],
+      emoji: icons[idx % icons.length]
+    }));
+    setMolesList(initial);
+
+    const interval = setInterval(() => {
+      setMolesList(prev => {
+        const randomIndex = Math.floor(Math.random() * 6);
+        return prev.map((m, idx) => ({
+          ...m,
+          isActive: idx === randomIndex ? true : Math.random() > 0.65 ? m.isActive : false
+        }));
+      });
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [showGameZone, activeGame]);
+
+  const handlePopBubble = async (bubbleId: string, bubbleEmoji: string) => {
+    setBubbles(prev => prev.filter(b => b.id !== bubbleId));
+    
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(800 + Math.random() * 300, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1500, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      }
+    } catch(e) {}
+
+    if (!studentId || !classId || !teacherId || !joinedStudent) return;
+    try {
+      const nextScore = (joinedStudent.score || 0) + 1;
+      const nextSmashed = (joinedStudent.stressSmashed || 0) + 1;
+      
+      const docRef = doc(db, 'teachers', teacherId, 'classes', classId, 'students', studentId);
+      await setDoc(docRef, {
+        score: nextScore,
+        stressSmashed: nextSmashed,
+        gameAction: {
+          game: 'emoji',
+          text: `បានបំបែកពពុះរូបអារម្មណ៍រីករាយ! ${bubbleEmoji} 🎈`,
+          timestamp: Date.now()
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const playSoundPadNote = async (noteName: string) => {
+    setActiveNotePad(noteName);
+    setTimeout(() => setActiveNotePad(null), 200);
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        let freq = 523.25; // C5
+        if (noteName === 'D5') freq = 587.33;
+        else if (noteName === 'E5') freq = 659.25;
+        else if (noteName === 'G5') freq = 783.99;
+        else if (noteName === 'A5') freq = 880.00;
+        else if (noteName === 'C6') freq = 1046.50;
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+        osc.start(now);
+        osc.stop(now + 1.2);
+      }
+    } catch(e) {}
+
+    if (!studentId || !classId || !teacherId || !joinedStudent) return;
+    try {
+      const docRef = doc(db, 'teachers', teacherId, 'classes', classId, 'students', studentId);
+      await setDoc(docRef, {
+        gameAction: {
+          game: 'sound',
+          text: `លេងបន្ទះភ្លេង សម្លេងកំណត់ចំណាំ ${noteName} 🎹`,
+          timestamp: Date.now(),
+          note: noteName
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleWhackMole = async (id: number, name: string) => {
+    setMolesList(prev => 
+      prev.map(m => m.id === id ? { ...m, isActive: false } : m)
+    );
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(250, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      }
+    } catch(e) {}
+
+    if (!studentId || !classId || !teacherId || !joinedStudent) return;
+    try {
+      const nextScore = (joinedStudent.score || 0) + 1;
+      const nextSmashed = (joinedStudent.stressSmashed || 0) + 1;
+      
+      const docRef = doc(db, 'teachers', teacherId, 'classes', classId, 'students', studentId);
+      await setDoc(docRef, {
+        score: nextScore,
+        stressSmashed: nextSmashed,
+        gameAction: {
+          game: 'moles',
+          text: `បានវាយកម្ទេងអារម្មណ៍អវិជ្ជមាន៖ ${name}! 🔨`,
+          timestamp: Date.now()
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleTimeout = async () => {
     if (answeredState !== null || !studentId || !joinedStudent || !activeCardId) return;
     
@@ -331,14 +639,53 @@ export default function StudentPlayView() {
     .sort((a,b) => b.score - a.score)
     .findIndex(s => s.id === studentId) + 1;
 
-  if (!classId || !teacherId) {
+  if (!pinResolved) {
     return (
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-6 text-center select-none">
-        <Smartphone className="w-16 h-16 text-red-400 mb-4 animate-bounce" />
-        <h3 className="text-xl font-black text-white">តំណភ្ជាប់មិនត្រឹមត្រូវ (Invalid Join link)</h3>
-        <p className="text-xs text-slate-400 max-w-sm mt-2 font-semibold">
-          សូមទាក់ទងលោកគ្រូ-អ្នកគ្រូរបស់អ្នក ដើម្បីសុំ QR Code ឬ Copy Link សម្រាប់តភ្ជាប់ចូលរួមឆ្លើយសំណួរម្ដងទៀត!
-        </p>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-6 items-center justify-center relative select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_100%)] pointer-events-none" />
+        
+        <form onSubmit={handleResolvePIN} className="w-full max-w-sm bg-slate-900/40 border border-slate-800/80 p-8 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6 text-center">
+          <div className="flex flex-col items-center space-y-2">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border-2 border-amber-500/20 flex items-center justify-center text-3xl animate-pulse">
+              🎮
+            </div>
+            <h3 className="text-xl font-black text-white">ចូលរួមលេងហ្គេម Blooket</h3>
+            <p className="text-[10px] uppercase font-black tracking-wider text-amber-500">EduSpin Game ID / PIN entry</p>
+          </div>
+
+          {pinError && (
+            <div className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-2xl text-xs text-red-400 font-bold leading-normal text-left flex gap-1.5 items-start">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{pinError}</span>
+            </div>
+          )}
+
+          <div className="space-y-2 text-left">
+            <label className="text-xs font-black text-slate-400">វាយបញ្ចូលលេខសម្គាល់បន្ទប់ (Game PIN - ៦ ខ្ទង់)៖</label>
+            <input 
+              type="text" 
+              required
+              maxLength={6}
+              placeholder="ឧទាហរណ៍៖ ២៨៤៧១៩"
+              value={enteredPin}
+              onChange={(e) => setEnteredPin(e.target.value.replace(/[^0-9]/g, ''))}
+              className="w-full px-4 py-3.5 bg-slate-950/70 border border-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-indigo-500 rounded-2xl text-center text-2xl font-black font-mono tracking-widest text-white outline-none transition-all"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={pinLoading || enteredPin.length < 6}
+            className="w-full py-4 bg-amber-500 hover:bg-amber-600 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs rounded-2xl select-none cursor-pointer transition-all border-none flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 uppercase tracking-widest"
+          >
+            {pinLoading ? <RefreshCw className="w-4 h-4 animate-spin text-slate-950" /> : <ArrowRight className="w-4 h-4 text-slate-950" />}
+            <span>ចូលរួមលេង (JOIN GAME)</span>
+          </button>
+          
+          <div className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+            ឬប្រើប្រាស់ស្កេន QR Code ពីអេក្រង់គ្រូដើម្បីចូលរួមដោយស្វ័យប្រវត្តិ។
+          </div>
+        </form>
       </div>
     );
   }
@@ -537,8 +884,192 @@ export default function StudentPlayView() {
       </header>
 
       {/* Core Play Area */}
-      <main className="flex-1 p-6 flex flex-col justify-center items-center relative z-10 overflow-y-auto">
-        {!currentQuestion ? (
+      <main className="flex-1 p-6 flex flex-col justify-center items-center relative z-10 overflow-y-auto w-full max-w-sm mx-auto">
+        {showGameZone ? (
+          /* Student Stress Relief Game Zone Workspace (3 figures on bottom screen as requested) */
+          <div className="w-full max-w-sm bg-slate-900/60 border border-slate-800/80 rounded-[2.5rem] p-6 flex flex-col gap-5 animate-in zoom-in duration-200 text-left font-sans">
+            {/* Game Zone Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800 gap-2">
+              <div className="text-left">
+                <h3 className="text-xs sm:text-sm font-black text-teal-400">កន្លែងលេងហ្គេមកាត់ស្ត្រេស 🎮</h3>
+                <p className="text-[9px] text-slate-505 font-bold uppercase tracking-wider">Student Relaxation Oasis</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGameZone(false)}
+                className="px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-350 hover:text-white font-black text-[10px] rounded-xl cursor-pointer transition-all border-none select-none"
+              >
+                ចាកចេញ (Exit)
+              </button>
+            </div>
+
+            {/* Game Select Tab Button Row */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-850">
+              <button
+                type="button"
+                onClick={() => setActiveGame('emoji')}
+                className={`py-2 text-[10px] font-black rounded-xl transition-all cursor-pointer border-none select-none flex flex-col items-center gap-0.5 ${
+                  activeGame === 'emoji'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'
+                }`}
+              >
+                <span className="text-sm select-none">🎈</span>
+                <span>បំបែកពពុះ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveGame('sound')}
+                className={`py-2 text-[10px] font-black rounded-xl transition-all cursor-pointer border-none select-none flex flex-col items-center gap-0.5 ${
+                  activeGame === 'sound'
+                    ? 'bg-pink-650 text-white shadow-md'
+                    : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'
+                }`}
+              >
+                <span className="text-sm select-none">🎹</span>
+                <span>បន្ទះតន្ត្រី</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveGame('moles')}
+                className={`py-2 text-[10px] font-black rounded-xl transition-all cursor-pointer border-none select-none flex flex-col items-center gap-0.5 ${
+                  activeGame === 'moles'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'
+                }`}
+              >
+                <span className="text-sm select-none">🔨</span>
+                <span>វាយកម្ទេច</span>
+              </button>
+            </div>
+
+            {/* Game Content Area */}
+            <div className="flex-1 min-h-[280px] flex flex-col justify-center items-center relative overflow-hidden bg-slate-950/40 border border-slate-850 rounded-[2rem] p-4">
+              
+              {/* Game 1: Emoji Pop Bubble */}
+              {activeGame === 'emoji' && (
+                <div className="w-full h-full flex flex-col relative min-h-[250px]">
+                  <div className="absolute top-1 right-1 text-[8px] font-black uppercase text-indigo-400 bg-indigo-500/10 px-2 rounded-full z-10">
+                    សិស្ស ៤
+                  </div>
+                  <div className="text-center mb-1.5 z-10 shrink-0">
+                    <h4 className="text-xs font-black text-indigo-300">🎈 ហ្គេមបំបែកពពុះរូបអារម្មណ៍ (Emoji Pop)</h4>
+                    <p className="text-[9px] text-slate-450 font-semibold leading-normal">ចុចបំបែកពពុះកង្វល់! +1 ពិន្ទុ</p>
+                  </div>
+
+                  <div className="flex-1 relative self-stretch overflow-hidden">
+                    {bubbles.length === 0 ? (
+                      <div className="absolute inset-0 flex items-center justify-center text-slate-700 text-[10px] font-bold">
+                        កំពុងស្វែងរកពពុះ...
+                      </div>
+                    ) : (
+                      bubbles.map(bubble => (
+                        <button
+                          key={bubble.id}
+                          type="button"
+                          onClick={() => handlePopBubble(bubble.id, bubble.emoji)}
+                          className="absolute transform -translate-x-1/2 -translate-y-1/2 rounded-full cursor-pointer border-none select-none flex items-center justify-center p-0 transition-opacity"
+                          style={{
+                            left: `${bubble.x}%`,
+                            top: `${bubble.y}%`,
+                            width: `${bubble.size}px`,
+                            height: `${bubble.size}px`,
+                            background: 'radial-gradient(circle at 35% 35%, rgba(255,255,255,0.15) 0%, rgba(99,102,241,0.2) 60%, rgba(99,102,241,0.35) 100%)',
+                            border: '1.2px solid rgba(129,140,248,0.3)',
+                            backdropFilter: 'blur(1px)'
+                          }}
+                        >
+                          <span className="text-lg select-none">{bubble.emoji}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Game 2: Sound Chime Relaxation Pads */}
+              {activeGame === 'sound' && (
+                <div className="w-full h-full flex flex-col items-center justify-center min-h-[250px] relative">
+                  <div className="absolute top-1 right-1 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 px-2 rounded-full z-10">
+                    សិស្ស ៥
+                  </div>
+                  <div className="text-center mb-4 z-10 shrink-0">
+                    <h4 className="text-xs font-black text-pink-300">🎹 បន្ទះតន្ត្រីស្ត្រេសគីឡូ (Sound Pad)</h4>
+                    <p className="text-[9px] text-slate-450 font-semibold leading-normal">បន្លឺសម្លេងលាន់ឮលើអេក្រង់របស់គ្រូ live!</p>
+                  </div>
+
+                  {/* Pentatonic buttons grid */}
+                  <div className="grid grid-cols-2 gap-2.5 w-full max-w-xs p-1">
+                    {[
+                      { note: 'C5', name: '🔴 សុភមង្គល', bg: 'bg-red-500 hover:bg-red-600' },
+                      { note: 'D5', name: '🟠 ថាមពល', bg: 'bg-orange-500 hover:bg-orange-600' },
+                      { note: 'E5', name: '🟡 លំហែកាយ', bg: 'bg-amber-500 hover:bg-amber-600' },
+                      { note: 'G5', name: '🟢 ក្តីសង្ឃឹម', bg: 'bg-emerald-500 hover:bg-emerald-600' },
+                      { note: 'A5', name: '🔵 សេរីភាព', bg: 'bg-sky-500 hover:bg-sky-600' },
+                      { note: 'C6', name: '🔮 សន្តិភាព', bg: 'bg-purple-500 hover:bg-purple-600' }
+                    ].map(nt => (
+                      <button
+                        key={nt.note}
+                        type="button"
+                        onClick={() => playSoundPadNote(nt.note)}
+                        className={`py-3.5 px-2.5 rounded-xl flex flex-col justify-center items-center gap-0.5 transition-all cursor-pointer border-none shadow-sm ${
+                          activeNotePad === nt.note ? 'scale-95 brightness-125 saturate-150' : 'active:scale-95'
+                        } ${nt.bg} text-white`}
+                      >
+                        <span className="text-xs font-black tracking-wide leading-none">{nt.note}</span>
+                        <span className="text-[8px] font-bold text-white/90">{nt.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Game 3: Stress Smasher Whack-A-Mole */}
+              {activeGame === 'moles' && (
+                <div className="w-full h-full flex flex-col relative min-h-[250px]">
+                  <div className="absolute top-1 right-1 text-[8px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 rounded-full z-10">
+                    សិស្ស ៦
+                  </div>
+                  <div className="text-center mb-3.5 z-10 shrink-0">
+                    <h4 className="text-xs font-black text-amber-400">🔨 ល្បែងវាយកម្ទេចភាពធុញថប់ (Stress Smasher)</h4>
+                    <p className="text-[9px] text-slate-450 font-semibold leading-normal">វាយសត្រូវស្ត្រេសបន្សុទ្ធចិត្ត! +1 ពិន្ទុ</p>
+                  </div>
+
+                  {/* 3x2 Grid for Whack-A-Mole */}
+                  <div className="grid grid-cols-3 gap-3 p-1 flex-1 justify-center items-center self-stretch">
+                    {molesList.map(mole => (
+                      <div 
+                        key={mole.id} 
+                        className="aspect-square bg-slate-900 border border-slate-800 rounded-2xl relative flex flex-col items-center justify-end overflow-hidden p-1 pb-1.5 shadow-inner"
+                      >
+                        {/* Hole ellipse */}
+                        <div className="absolute bottom-1 w-[80%] h-2 bg-slate-950/90 rounded-full border border-slate-900 ml-[10%]" />
+                        
+                        {/* Mole image */}
+                        <button
+                          type="button"
+                          onClick={() => mole.isActive && handleWhackMole(mole.id, mole.name)}
+                          disabled={!mole.isActive}
+                          className={`flex flex-col items-center border-none justify-center bg-transparent p-0 cursor-pointer select-none transition-all duration-300 absolute left-1/2 -translate-x-1/2 z-10 ${
+                            mole.isActive 
+                              ? 'bottom-2 scale-100 opacity-100' 
+                              : 'bottom-[-35px] scale-50 opacity-0 pointer-events-none'
+                          }`}
+                        >
+                          <span className="text-2xl select-none">{mole.emoji}</span>
+                          <span className="text-[8px] bg-red-650 text-white font-extrabold px-1 py-0.2 rounded mt-0.5 whitespace-nowrap shadow border border-red-500/20">
+                            {mole.name}
+                          </span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        ) : !currentQuestion ? (
           /* Waiting Screen Workspace */
           <div className="text-center p-8 space-y-6 max-w-sm">
             <div className="relative">
@@ -560,13 +1091,25 @@ export default function StudentPlayView() {
             <div className="p-4 bg-slate-900/40 border border-slate-900 rounded-3xl space-y-2 text-left">
               <div className="flex justify-between items-center text-[10px] font-black text-slate-400">
                 <span>ចំណាត់ថ្នាក់របស់អ្នក (Class Rank)៖</span>
-                <span className="text-indigo-400">លេខ {currentRank} / {allStudents.length}</span>
+                <span className="text-indigo-400 font-mono">លេខ {currentRank} / {allStudents.length}</span>
               </div>
               <div className="flex justify-between items-center text-[10px] font-black text-slate-400">
                 <span>ពិន្ទុសរុប (Cumulative Points)៖</span>
                 <span className="text-amber-400 font-mono text-xs">{joinedStudent.score || 0} ពិន្ទុ</span>
               </div>
             </div>
+
+            {/* Enter Game Zone Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowGameZone(true);
+                setActiveGame('emoji');
+              }}
+              className="w-full py-3.5 px-6 bg-gradient-to-r from-teal-500 via-indigo-600 to-indigo-700 hover:from-teal-600 hover:via-indigo-700 hover:to-indigo-800 text-white font-extrabold text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer select-none active:scale-95 border-none relative z-10"
+            >
+              <span>🎮 លេងហ្គេមកាត់បន្ថយភាពតានតឹង (Relaxation Zone)</span>
+            </button>
           </div>
         ) : answeredState !== null ? (
           /* Answer Feedback Screen Workspace */
@@ -612,6 +1155,18 @@ export default function StudentPlayView() {
             <div className="text-center text-[10px] text-slate-500 animate-pulse font-bold">
               កំពុងរង់ចាំលោកគ្រូ-អ្នកគ្រូបើកសំនួរបន្ទាប់...
             </div>
+
+            {/* Enter Game Zone Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowGameZone(true);
+                setActiveGame('emoji');
+              }}
+              className="w-full py-3 px-5 bg-gradient-to-r from-teal-500 to-indigo-650 text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 transition-all border-none"
+            >
+              <span>🎮 លេងហ្គេមកាត់បន្ថយស្ត្រេស (Relax Game)</span>
+            </button>
           </div>
         ) : (
           /* Active Question Workspace for Student answering */
@@ -657,7 +1212,7 @@ export default function StudentPlayView() {
                     onClick={() => handleSelectOption(i)}
                     className={`w-full p-4 rounded-2xl flex items-center gap-3 text-left transition-all text-white cursor-pointer select-none border-none shadow-md overflow-hidden max-w-full ${activeColor}`}
                   >
-                    <span className="w-7 h-7 rounded-xl bg-black/20 flex items-center justify-center font-black text-xs shrink-0 select-none">
+                    <span className="w-7 h-7 rounded-xl bg-black/25 flex items-center justify-center font-black text-xs shrink-0 select-none">
                       {optPrefix}
                     </span>
                     <span className="text-xs font-black select-none leading-snug break-words whitespace-normal word-break-break-word flex-1">
@@ -671,6 +1226,22 @@ export default function StudentPlayView() {
         )}
       </main>
       
+      {/* Shared class celebration overlay banner */}
+      {showClassCelebration && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm animate-fade-in text-center p-6 pointer-events-none">
+          <div className="bg-slate-900 border-2 border-indigo-500/20 p-8 rounded-[3rem] shadow-2xl space-y-4 max-w-sm pointer-events-auto transform animate-bounce">
+            <span className="text-5xl select-none animate-pulse">🎉 🎈 🎉</span>
+            <h3 className="text-xl font-black text-indigo-400">អបអរសាទរ! (Congratulations!)</h3>
+            <p className="text-xs text-slate-200 leading-relaxed font-bold">
+              លោកគ្រូ-អ្នកគ្រូ បានចែករំលែកសេចក្ដីរីករាយ និងក្ដីស្រឡាញ់ដល់សិស្សទាំងអស់គ្នាក្នុងថ្នាក់! 💖 🌟
+            </p>
+            <span className="text-xs bg-indigo-500/20 text-indigo-300 font-mono font-black px-3.5 py-1 rounded-full">
+              CLASSROOM CARNIVAL CELEBRATION
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Footer copyright */}
       <footer className="py-4 text-center shrink-0 border-t border-slate-900/60 font-mono text-[9px] text-slate-500 font-bold tracking-widest">
         ACTIVE MOBILE LIVE TERMINAL

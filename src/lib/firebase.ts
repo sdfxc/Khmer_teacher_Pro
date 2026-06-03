@@ -147,31 +147,54 @@ function buildPath(...segments: any[]): string {
   return parts.join('/').replace(/\/+/g, '/');
 }
 
+// Dynamic switch controlling whether we run fallback database operations
+export let useMockDb = isFirebasePlaceholder;
+
 // Proxied exports for Firebase API calls
 export const doc = (dbRef: any, ...args: any[]): any => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     const pathParts = args.filter(a => typeof a === 'string' || (a && a.path));
     const fullPath = buildPath(dbRef, pathParts);
     const segments = fullPath.split('/').filter(Boolean);
     const docId = segments[segments.length - 1] || 'default';
     return new MockDocRef(docId, fullPath);
   }
-  return (firestoreDoc as any)(dbRef, ...args);
+  try {
+    return (firestoreDoc as any)(dbRef, ...args);
+  } catch (err) {
+    console.warn("Real Firestore doc creation failed, enabling express fallback database:", err);
+    useMockDb = true;
+    const pathParts = args.filter(a => typeof a === 'string' || (a && a.path));
+    const fullPath = buildPath(dbRef, pathParts);
+    const segments = fullPath.split('/').filter(Boolean);
+    const docId = segments[segments.length - 1] || 'default';
+    return new MockDocRef(docId, fullPath);
+  }
 };
 
 export const collection = (dbRef: any, ...args: any[]): any => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     const pathParts = args.filter(a => typeof a === 'string' || (a && a.path));
     const fullPath = buildPath(dbRef, pathParts);
     const segments = fullPath.split('/').filter(Boolean);
     const colId = segments[segments.length - 1] || 'default';
     return new MockCollectionRef(colId, fullPath);
   }
-  return (firestoreCollection as any)(dbRef, ...args);
+  try {
+    return (firestoreCollection as any)(dbRef, ...args);
+  } catch (err) {
+    console.warn("Real Firestore collection creation failed, enabling express fallback database:", err);
+    useMockDb = true;
+    const pathParts = args.filter(a => typeof a === 'string' || (a && a.path));
+    const fullPath = buildPath(dbRef, pathParts);
+    const segments = fullPath.split('/').filter(Boolean);
+    const colId = segments[segments.length - 1] || 'default';
+    return new MockCollectionRef(colId, fullPath);
+  }
 };
 
 export const getDoc = async (ref: any): Promise<any> => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     if (ref instanceof MockDocRef) {
       try {
         const res = await fetch(`/api/db-get?path=${encodeURIComponent(ref.path)}&type=doc`);
@@ -196,12 +219,27 @@ export const getDoc = async (ref: any): Promise<any> => {
       const data = dbState[ref.path];
       return new MockDocSnapshot(ref.id, !!data, data);
     }
+    // If somehow we got a real Ref, convert it to MockDocRef
+    const path = ref.path || '';
+    return getDoc(new MockDocRef(path.split('/').pop() || '', path));
   }
-  return firestoreGetDoc(ref);
+  try {
+    // Implement a 3-second timeout for the real Firestore getDoc call
+    const docPromise = firestoreGetDoc(ref);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Real Firestore operation timed out")), 3000);
+    });
+    return await Promise.race([docPromise, timeoutPromise]);
+  } catch (err) {
+    console.warn("Real Firestore getDoc failed/timed out, enabling express fallback database:", err);
+    useMockDb = true;
+    const path = ref.path || '';
+    return getDoc(new MockDocRef(path.split('/').pop() || '', path));
+  }
 };
 
 export const getDocs = async (ref: any): Promise<any> => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     if (ref instanceof MockCollectionRef) {
       try {
         const res = await fetch(`/api/db-get?path=${encodeURIComponent(ref.path)}&type=collection`);
@@ -242,12 +280,26 @@ export const getDocs = async (ref: any): Promise<any> => {
       }
       return new MockQuerySnapshot(docs);
     }
+    // Convert to mock collection ref
+    const path = ref.path || '';
+    return getDocs(new MockCollectionRef(path.split('/').pop() || '', path));
   }
-  return firestoreGetDocs(ref);
+  try {
+    const docsPromise = firestoreGetDocs(ref);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Real Firestore operation timed out")), 3000);
+    });
+    return await Promise.race([docsPromise, timeoutPromise]);
+  } catch (err) {
+    console.warn("Real Firestore getDocs failed/timed out, enabling express fallback database:", err);
+    useMockDb = true;
+    const path = ref.path || '';
+    return getDocs(new MockCollectionRef(path.split('/').pop() || '', path));
+  }
 };
 
 export const setDoc = async (ref: any, data: any, options?: any): Promise<any> => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     if (ref instanceof MockDocRef) {
       const merge = !!(options && options.merge);
       
@@ -273,12 +325,25 @@ export const setDoc = async (ref: any, data: any, options?: any): Promise<any> =
       }
       return;
     }
+    const path = ref.path || '';
+    return setDoc(new MockDocRef(path.split('/').pop() || '', path), data, options);
   }
-  return firestoreSetDoc(ref, data, options);
+  try {
+    const writePromise = firestoreSetDoc(ref, data, options);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Real Firestore operation timed out")), 3000);
+    });
+    return await Promise.race([writePromise, timeoutPromise]);
+  } catch (err) {
+    console.warn("Real Firestore setDoc failed/timed out, enabling express fallback database:", err);
+    useMockDb = true;
+    const path = ref.path || '';
+    return setDoc(new MockDocRef(path.split('/').pop() || '', path), data, options);
+  }
 };
 
 export const deleteDoc = async (ref: any): Promise<any> => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     if (ref instanceof MockDocRef) {
       const dbState = getLocalDB();
       delete dbState[ref.path];
@@ -295,28 +360,51 @@ export const deleteDoc = async (ref: any): Promise<any> => {
       }
       return;
     }
+    const path = ref.path || '';
+    return deleteDoc(new MockDocRef(path.split('/').pop() || '', path));
   }
-  return firestoreDeleteDoc(ref);
+  try {
+    const deletePromise = firestoreDeleteDoc(ref);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Real Firestore operation timed out")), 3000);
+    });
+    return await Promise.race([deletePromise, timeoutPromise]);
+  } catch (err) {
+    console.warn("Real Firestore deleteDoc failed/timed out, enabling express fallback database:", err);
+    useMockDb = true;
+    const path = ref.path || '';
+    return deleteDoc(new MockDocRef(path.split('/').pop() || '', path));
+  }
 };
 
 export const onSnapshot = (ref: any, callback: any, errorCallback?: any): any => {
-  if (isFirebasePlaceholder) {
+  if (useMockDb) {
     let active = true;
     let previousJSON = '';
+
+    const convertedRef = (ref instanceof MockDocRef || ref instanceof MockCollectionRef)
+      ? ref
+      : (() => {
+          const path = ref.path || '';
+          const isDoc = path.split('/').filter(Boolean).length % 2 === 0;
+          return isDoc 
+            ? new MockDocRef(path.split('/').pop() || '', path) 
+            : new MockCollectionRef(path.split('/').pop() || '', path);
+        })();
 
     const runCallback = async () => {
       if (!active) return;
       try {
-        if (ref instanceof MockDocRef) {
-          const snap = await getDoc(ref);
+        if (convertedRef instanceof MockDocRef) {
+          const snap = await getDoc(convertedRef);
           if (!active) return;
           const currentJSON = JSON.stringify(snap.data() || null);
           if (currentJSON !== previousJSON) {
             previousJSON = currentJSON;
             callback(snap);
           }
-        } else if (ref instanceof MockCollectionRef) {
-          const snap = await getDocs(ref);
+        } else if (convertedRef instanceof MockCollectionRef) {
+          const snap = await getDocs(convertedRef);
           if (!active) return;
           const currentJSON = JSON.stringify((snap.docs || []).map((d: any) => d.data()));
           if (currentJSON !== previousJSON) {
@@ -345,23 +433,45 @@ export const onSnapshot = (ref: any, callback: any, errorCallback?: any): any =>
       window.removeEventListener('mock_db_update', handler);
     };
   }
-  return firestoreOnSnapshot(ref, callback, errorCallback);
+  
+  try {
+    return firestoreOnSnapshot(ref, callback, (err) => {
+      console.warn("Real Firestore onSnapshot error, fallback to mock DB active:", err);
+      useMockDb = true;
+      if (errorCallback) errorCallback(err);
+    });
+  } catch (err) {
+    console.warn("Real Firestore onSnapshot subscribe error, fallback to mock DB active:", err);
+    useMockDb = true;
+    const path = ref.path || '';
+    const isDoc = path.split('/').filter(Boolean).length % 2 === 0;
+    const convertedRef = isDoc 
+      ? new MockDocRef(path.split('/').pop() || '', path) 
+      : new MockCollectionRef(path.split('/').pop() || '', path);
+    return onSnapshot(convertedRef, callback, errorCallback);
+  }
 };
 
 // Validate Connection to Firestore on startup
 export async function testConnection() {
   if (isFirebasePlaceholder) {
+    useMockDb = true;
     console.info('Firestore operates in instant local mock mode.');
     return;
   }
   setTimeout(async () => {
     try {
-      await getDocFromServer(firestoreDoc(db, 'test', 'connection'));
+      const testPromise = getDocFromServer(firestoreDoc(db, 'test', 'connection'));
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Firebase test connection timed out")), 2000);
+      });
+      await Promise.race([testPromise, timeoutPromise]);
       console.log('Firebase connection test completed successfully.');
     } catch (error) {
-      console.info('Firestore is operating in offline/cached mode. Local storage changes will sync automatically once online.');
+      console.warn('Real Firestore is unreachable, disabled or timed out. Falling back to Express database.', error);
+      useMockDb = true;
     }
-  }, 1000);
+  }, 500);
 }
 
 testConnection();

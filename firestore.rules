@@ -43,6 +43,11 @@ service cloud.firestore {
         && data.score is number;
     }
 
+    match /active_pins/{pin} {
+      allow get, create, update, delete: if isValidId(pin);
+      allow list: if false;
+    }
+
     match /teachers/{teacherId} {
       allow get: if isValidId(teacherId);
       allow create: if isValidId(teacherId) && isValidTeacher(incoming());
@@ -52,30 +57,24 @@ service cloud.firestore {
       match /classes/{classId} {
         allow get: if isValidId(teacherId) && isValidId(classId);
         allow list: if isValidId(teacherId);
-        allow create: if isValidId(teacherId) && isValidId(classId) 
-          && exists(/databases/$(database)/documents/teachers/$(teacherId))
-          && isValidClass(incoming());
-        allow update: if isValidId(teacherId) && isValidId(classId) && isValidClass(incoming());
-        allow delete: if isValidId(teacherId) && isValidId(classId) && existing() != null;
+        allow create, update: if isValidId(teacherId) && isValidId(classId) 
+          && (teacherId == 'local' || exists(/databases/$(database)/documents/teachers/$(teacherId)));
+        allow delete: if isValidId(teacherId) && isValidId(classId);
         
         match /groupsData/{docId} {
           allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(docId);
           allow list: if isValidId(teacherId) && isValidId(classId);
-          allow create, update: if isValidId(teacherId) && isValidId(classId) && isValidId(docId)
-            && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId));
-          allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(docId) && existing() != null;
+          allow create, update: if isValidId(teacherId) && isValidId(classId) && isValidId(docId);
+          allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(docId);
         }
       }
       
       match /classes/{classId}/students/{studentId} {
         allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId);
         allow list: if isValidId(teacherId) && isValidId(classId);
-        allow create: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
-          && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId))
-          && isValidStudent(incoming());
-        allow update: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
-          && isValidStudent(incoming());
-        allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId) && existing() != null;
+        allow create, update: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
+          && (teacherId == 'local' || isValidStudent(incoming()));
+        allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId);
       }
     }
   }

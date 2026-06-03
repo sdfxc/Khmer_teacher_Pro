@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Sparkles, LayoutGrid, RotateCcw, User, LogIn, LogOut, Plus, Moon, Sun, Trash2, GraduationCap, Compass, Users as UsersIcon, UserCog, Check, Cloud, Loader2 } from 'lucide-react';
+import { Sparkles, LayoutGrid, RotateCcw, User, LogIn, LogOut, Plus, Moon, Sun, Trash2, GraduationCap, Compass, Users as UsersIcon, UserCog, Check, Cloud, Loader2, Pin, Gamepad2 } from 'lucide-react';
 import StudentPanel from './components/StudentPanel';
 import QuizPanel from './components/QuizPanel';
 import LessonModal from './components/LessonModal';
@@ -20,9 +20,9 @@ import StudentLobby from './components/StudentLobby';
 const EMOJIS = ["🥰", "😂", "😩", "🥳", "🥺", "😇", "😎", "🤩", "🤔", "🤗", "🤭", "🫠", "😤", "😮💨", "🫡", "😬", "🙄", "🤒", "😵💫", "😳", "🤪", "😜", "🤫", "🫣", "☹️", "😕"];
 
 const DEFAULT_CLASSES: ClassInfo[] = [
-  { id: 'class-7a', name: 'ថ្នាក់ទី៧ក' },
-  { id: 'class-8a', name: 'ថ្នាក់ទី៨ក' },
-  { id: 'class-9a', name: 'ថ្នាក់ទី៩ក' }
+  { id: 'class-7a', name: 'ថ្នាក់ទី៧ក', isPinned: true },
+  { id: 'class-8a', name: 'ថ្នាក់ទី៨ក', isPinned: true },
+  { id: 'class-9a', name: 'ថ្នាក់ទី៩ក', isPinned: true }
 ];
 
 export default function App() {
@@ -129,6 +129,7 @@ export default function App() {
             await setDoc(doc(db, 'teachers', teacher.id, 'classes', cls.id), {
               id: cls.id,
               name: cls.name,
+              isPinned: !!cls.isPinned,
               pickedIds: [],
               cards: [],
               createdAt: new Date().toISOString()
@@ -684,6 +685,31 @@ export default function App() {
     setActiveCardId(null);
   };
 
+  const handleTogglePinClass = async (e: React.MouseEvent, classId: string) => {
+    e.stopPropagation(); // prevent switching class
+    const updated = classes.map(c => {
+      if (c.id === classId) {
+        return { ...c, isPinned: !c.isPinned };
+      }
+      return c;
+    });
+    setClasses(updated);
+    localStorage.setItem('khmer_teacher_classes', JSON.stringify(updated));
+
+    if (teacher) {
+      try {
+        const classToUpdate = updated.find(c => c.id === classId);
+        if (classToUpdate) {
+          await setDoc(doc(db, 'teachers', teacher.id, 'classes', classId), {
+            isPinned: !!classToUpdate.isPinned
+          }, { merge: true });
+        }
+      } catch (err) {
+        console.warn("Failed to sync pinned class on Cloud:", err);
+      }
+    }
+  };
+
   const handleAddClass = async () => {
     const className = window.prompt('សូមបញ្ចូលឈ្មោះថ្នាក់រៀនថ្មី៖', 'ថ្នាក់ទី១០ក');
     if (className && className.trim()) {
@@ -1146,6 +1172,17 @@ export default function App() {
             </button>
           )}
 
+          <button
+            onClick={() => {
+              window.location.search = '?mode=student';
+            }}
+            className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all border border-amber-500/20 active:scale-95 cursor-pointer"
+            title="ចូលរួមជាសិស្សលេងហ្គេម"
+          >
+            <Gamepad2 className="w-4 h-4 text-amber-500" />
+            <span>សិស្សលេងហ្គេម (PIN)</span>
+          </button>
+
           <div className={`h-6 w-[1px] ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'} mx-1`} />
 
           {/* Theme Switcher */}
@@ -1188,11 +1225,11 @@ export default function App() {
         <GraduationCap className="w-5 h-5 text-indigo-500 shrink-0" />
         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-2 shrink-0">ថ្នាក់រៀនសកម្ម៖</span>
         <div className="flex items-center gap-2">
-          {classes.map((cls) => (
+          {[...classes].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map((cls) => (
             <div 
               key={cls.id}
               onClick={() => handleSwitchClass(cls.id)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all select-none border ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2.5 cursor-pointer transition-all select-none border ${
                 activeClassId === cls.id 
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/10 scale-102' 
                   : isDarkMode 
@@ -1200,11 +1237,22 @@ export default function App() {
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 shadow-sm'
               }`}
             >
-              <span>{cls.name}</span>
+              <span className="truncate">{cls.name}</span>
+              <button
+                onClick={(e) => handleTogglePinClass(e, cls.id)}
+                className={`p-0.5 rounded-md transition-colors shrink-0 ${
+                  cls.isPinned 
+                    ? 'text-amber-400 hover:bg-amber-400/10' 
+                    : 'text-slate-450 hover:bg-slate-500/10 hover:text-slate-650'
+                }`}
+                title={cls.isPinned ? "ដកការ Pin" : "Pin ថ្នាក់រៀន"}
+              >
+                <Pin className={`w-3 h-3 ${cls.isPinned ? 'fill-amber-400 rotate-45' : ''}`} />
+              </button>
               {classes.length > 1 && (
                 <button
                   onClick={(e) => handleRemoveClass(e, cls.id, cls.name)}
-                  className="p-0.5 hover:bg-red-500/20 hover:text-red-500 rounded-md transition-colors"
+                  className="p-0.5 hover:bg-red-500/20 hover:text-red-500 rounded-md transition-colors shrink-0"
                   title="លុបថ្នាក់"
                 >
                   <Trash2 className="w-3 h-3" />

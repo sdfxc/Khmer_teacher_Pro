@@ -12,6 +12,13 @@ export interface Student {
   isApproved?: boolean;
   isDeclined?: boolean;
   isSimulated?: boolean;
+  stressSmashed?: number;
+  gameAction?: {
+    game: string;
+    text: string;
+    timestamp: number;
+    note?: string;
+  };
 }
 
 export interface Question {
@@ -47,6 +54,7 @@ export interface QuizChapter {
 export interface ClassInfo {
   id: string;
   name: string;
+  isPinned?: boolean;
 }
 
 export interface TeacherAccount {

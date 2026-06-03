@@ -50,6 +50,122 @@ export default function StudentLobby({
   const [pointsPerQuestion, setPointsPerQuestion] = useState<number>(100);
   const [autoApprove, setAutoApprove] = useState<boolean>(false);
 
+  // Real-time student relaxation game tracking states
+  const [lastHandledActions, setLastHandledActions] = useState<Record<string, number>>({});
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [activeStarNotes, setActiveStarNotes] = useState<any[]>([]);
+
+  // Function to synthesize soft bell notes on the teacher computer
+  const playTeacherBell = (note: string) => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const now = ctx.currentTime;
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      let freq = 523.25; // C5
+      if (note === 'D5') freq = 587.33;
+      else if (note === 'E5') freq = 659.25;
+      else if (note === 'G5') freq = 783.99;
+      else if (note === 'A5') freq = 880.00;
+      else if (note === 'C6') freq = 1046.50;
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+      
+      osc.start(now);
+      osc.stop(now + 1.2);
+    } catch (e) {
+      console.warn("Audio Context blocked");
+    }
+  };
+
+  // Watch students for game updates
+  useEffect(() => {
+    if (!students || students.length === 0) return;
+    
+    students.forEach(student => {
+      if (student.gameAction && student.gameAction.timestamp) {
+        const lastTime = lastHandledActions[student.id] || 0;
+        if (student.gameAction.timestamp > lastTime) {
+          // New action detected!
+          setLastHandledActions(prev => ({
+            ...prev,
+            [student.id]: student.gameAction.timestamp
+          }));
+
+          // Add to activity logs
+          setActivityLogs(prev => [
+            { 
+              id: `${student.id}-${student.gameAction.timestamp}`, 
+              name: student.name, 
+              emoji: student.emoji || '🧑‍🎓',
+              text: student.gameAction.text, 
+              time: student.gameAction.timestamp 
+            },
+            ...prev.slice(0, 19)
+          ]);
+
+          // Play sound and trigger note star if it's music
+          if (student.gameAction.game === 'sound' && student.gameAction.note) {
+            playTeacherBell(student.gameAction.note);
+            
+            const newStar = {
+              id: `${student.id}-${student.gameAction.timestamp}`,
+              studentName: student.name,
+              emoji: student.emoji || '🧑‍🎓',
+              note: student.gameAction.note,
+              x: Math.random() * 80 + 10,
+              y: Math.random() * 60 + 20,
+              timestamp: Date.now()
+            };
+            setActiveStarNotes(prev => [...prev, newStar]);
+            setTimeout(() => {
+              setActiveStarNotes(prev => prev.filter(s => s.id !== newStar.id));
+            }, 2500);
+          }
+        }
+      }
+    });
+  }, [students, lastHandledActions]);
+
+  const handleTriggerCelebration = async () => {
+    confetti({
+      particleCount: 150,
+      spread: 80,
+      origin: { y: 0.6 }
+    });
+    
+    if (!activeClassId) return;
+    const tId = teacher?.id || 'local';
+    try {
+      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+      await setDoc(classDocRef, { 
+        celebrationTime: Date.now(),
+        celebrationActive: true
+      }, { merge: true });
+      
+      // Auto reset celebration Active state after 5 seconds
+      setTimeout(async () => {
+        try {
+          await setDoc(classDocRef, { celebrationActive: false }, { merge: true });
+        } catch (err) {
+          console.error(err);
+        }
+      }, 5000);
+    } catch (err) {
+      console.error("Failed to trigger shared celebration:", err);
+    }
+  };
+
   // Read pointsPerQuestion and autoApprove settings from Class document in Firestore
   useEffect(() => {
     if (!activeClassId) return;
@@ -93,6 +209,40 @@ export default function StudentLobby({
       console.error("Failed to sync auto-approve:", err);
     }
   };
+
+  // Generate a stable 6-digit PIN from teacherId and classId
+  const generateGamePIN = (tId: string, cId: string) => {
+    let hash = 0;
+    const str = `${tId ?? 'local'}_${cId ?? 'class-7a'}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const finalPin = Math.abs(hash % 900000) + 100000; // Always 6 digits: 100000 - 999999
+    return String(finalPin);
+  };
+
+  useEffect(() => {
+    if (!activeClassId) return;
+    const tId = teacher?.id || 'local';
+    const pin = generateGamePIN(tId, activeClassId);
+    
+    const registerPin = async () => {
+      try {
+        const pinDocRef = doc(db, 'active_pins', pin);
+        await setDoc(pinDocRef, {
+          pin,
+          teacherId: tId,
+          classId: activeClassId,
+          roomId: activeRoomId || 'default',
+          className: className,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Failed to register Game PIN on Cloud:", err);
+      }
+    };
+    registerPin();
+  }, [activeClassId, teacher, activeRoomId, className]);
 
   const baseSimulatedPlayers: Student[] = [
     { id: "sim-1", name: "សូភក្តិ / Sophak", score: 120, emoji: "🧑‍🎓", gender: "ប្រុស", status: "សកម្ម", isApproved: true, isSimulated: true },
@@ -1064,6 +1214,20 @@ export default function StudentLobby({
 
             {/* Instruction Lists */}
             <div className="text-left space-y-3 flex-1 max-w-sm">
+              {/* Game PIN Display */}
+              <div className="flex flex-col items-stretch self-stretch bg-indigo-50/40 dark:bg-indigo-950/25 p-3 px-4 rounded-3xl border border-solid border-indigo-150/40 dark:border-indigo-900/40">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">លេខសម្គាល់បន្ទប់ (Game PIN)</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black tracking-wide uppercase">Active Cloud</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-3xl font-black font-mono tracking-widest text-indigo-600 dark:text-indigo-400 select-all">
+                    {generateGamePIN(teacher?.id || 'local', activeClassId)}
+                  </span>
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1">សិស្សអាចគ្រាន់តែវាយលេខកូដនេះនៅលើទូរស័ព្ទដើម្បីចូលលេង!</span>
+              </div>
+
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">1</span>
                 <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">បើកកាមេរ៉ាទូរស័ព្ទ រួចស្កេនរូប QR Code ឬបើក Link ខាងក្រោម。</p>
@@ -1494,7 +1658,7 @@ export default function StudentLobby({
                           className="p-1 bg-white hover:bg-red-50 dark:bg-red-950/30 dark:hover:bg-red-950 text-red-500 rounded-lg flex items-center justify-center cursor-pointer border border-solid border-red-100/50"
                           title="ដកចេញ (Delete Student)"
                         >
-                          <Trash2 className="w-3 h-3 text-red-500" />
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
                         </button>
                       </div>
                     )}
@@ -1509,6 +1673,163 @@ export default function StudentLobby({
               <p className="text-[10px] text-slate-500 mt-1 max-w-sm">សូមឲ្យសិស្សស្កេនរូប QR Code ខាងលើដើម្បីចាប់ផ្ដើមធ្វើសំណួរចម្លើយទទួលបានពិន្ទុ!</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Real-time Student Stress Relief & Relaxation Supervision Dashboard (3 figures on top) */}
+      <div className="bg-slate-900 border border-slate-800/80 rounded-[2rem] p-6 shadow-2xl mt-6 flex flex-col text-left text-white relative overflow-hidden">
+        {/* Decorative background aura */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-80 h-80 bg-teal-500/5 rounded-full blur-[100px] pointer-events-none" />
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 mb-5 border-b border-slate-800 gap-4 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
+              <Tv className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                <span>ផ្ទាំងគ្រប់គ្រងសកម្មភាពលំហែកាយសិស្ស 🎮</span>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-extrabold px-2.5 py-0.5 rounded-full">
+                  Realtime Game Supervision
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400 font-medium mt-0.5">
+                តាមដានសកម្មភាពលេងហ្គេមកាត់បន្ថយភាពតានតឹងរបស់សិស្សក្នុងថ្នាក់ (Emoji Pop, Music Pad, Stress Smasher)
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTriggerCelebration}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-indigo-650 hover:from-teal-600 hover:to-indigo-750 text-white font-black text-xs rounded-xl shadow-lg hover:shadow-indigo-600/10 transition-all cursor-pointer active:scale-95 border-none"
+          >
+            <Sparkles className="w-4 h-4 animate-bounce" />
+            <span>បាញ់កាំជ្រួចចែកក្តីរីករាយ 🎈 (Trigger Class Celebration)</span>
+          </button>
+        </div>
+
+        {/* 3 Panels Row as requested */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
+          {/* Panel 1: Team Stress Crusher Progress (Cooperative Goal) */}
+          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[9px] font-black uppercase text-indigo-400 tracking-wider">របារសរុបសកម្មភាព (Collective progress)</span>
+                <h4 className="text-sm font-black text-white mt-1">ចំនួនបំបាត់ភាពតានតឹងសរុប 🔨</h4>
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-lg">គ្រូ ១</span>
+            </div>
+
+            <div className="my-4 text-center">
+              {(() => {
+                const totalSmashed = approvedStudents.reduce((sum, s) => sum + (s.stressSmashed || 0), 0);
+                const target = 200; // Target points to fill the gauge
+                const percent = Math.min(100, Math.floor((totalSmashed / target) * 100));
+                return (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-end">
+                      <span className="text-xs text-slate-400 font-semibold">កម្រិតធូរស្បើយក្នុងថ្នាក់ (Relaxed State)</span>
+                      <span className="text-sm font-black text-teal-450 font-mono">{totalSmashed} / {target} spts</span>
+                    </div>
+                    {/* Visual Bar with gradient */}
+                    <div className="w-full h-5 bg-slate-900 rounded-full border border-slate-800 overflow-hidden p-0.5">
+                      <div 
+                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-teal-400 to-emerald-500 transition-all duration-550 relative"
+                        style={{ width: `${percent}%` }}
+                      >
+                        {percent > 15 && (
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-950 leading-none">
+                            {percent}% លំហែកាយ
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-semibold leading-normal">
+                      សិស្សលេងហ្គេមកាន់តែច្រើន របារលំហែកាយកាន់តែពេញ! នៅពេលពេញ លោកគ្រូ-អ្នកគ្រូអាចចុចប៊ូតុងខាងលើដើម្បីបាញ់កាំជ្រួចអបអរ។
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Panel 2: Live Collective Harmony Broadcaster (Synthesized Sound Display) */}
+          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
+            <div className="flex items-start justify-between pb-2 border-b border-slate-850">
+              <div>
+                <span className="text-[9px] font-black uppercase text-pink-400 tracking-wider">ប្រព័ន្ធសំឡេងរួមគ្នា (Class Harmony Sky)</span>
+                <h4 className="text-sm font-black text-white mt-1">ផ្ទាំងសំឡេងរួមគ្នាលំហែកាយ 🎹</h4>
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 bg-pink-500/10 text-pink-400 rounded-lg">គ្រូ ២</span>
+            </div>
+
+            {/* Simulated soundboard box displaying sparkle star tags in real-time when student taps music notes! */}
+            <div className="flex-1 my-3 bg-slate-950 rounded-xl relative border border-slate-900 overflow-hidden flex flex-col items-center justify-center min-h-[160px] max-h-[160px]">
+              {activeStarNotes.length === 0 ? (
+                <div className="text-center p-3 text-slate-600 space-y-1">
+                  <Volume2 className="w-6 h-6 mx-auto opacity-40 text-indigo-400" />
+                  <p className="text-[10px] font-bold">រង់ចាំស្តាប់ការលេងកំណត់សំគាល់តន្ត្រី...</p>
+                  <p className="text-[9px] text-slate-705 font-semibold">(Student note taps will float up here live!)</p>
+                </div>
+              ) : (
+                <div className="absolute inset-0">
+                  {activeStarNotes.map(star => (
+                    <div
+                      key={star.id}
+                      className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-indigo-500/20 hover:scale-105 border border-indigo-400/40 rounded-full py-1 px-2.5 flex items-center gap-1 shadow-lg shadow-indigo-500/10 transition-all pointer-events-none"
+                      style={{ left: `${star.x}%`, top: `${star.y}%` }}
+                    >
+                      <span className="text-base select-none">{star.emoji}</span>
+                      <span className="text-[9px] font-bold text-indigo-250 truncate max-w-[60px]">{star.studentName}</span>
+                      <span className="text-[8px] bg-indigo-600 text-white font-mono font-black px-1 rounded">{star.note}</span>
+                    </div>
+                  ))}
+                  {/* Background particle sparklers */}
+                  <div className="absolute inset-x-0 bottom-1 py-1 text-center select-none pointer-events-none z-10">
+                    <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 px-2 py-0.5 rounded-full font-bold">
+                      🎼 ថ្នាក់រៀនកំពុងលេងភ្លេងរួមគ្នា
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Panel 3: Live Relaxation Event Log Logger */}
+          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
+            <div className="flex items-start justify-between pb-2 border-b border-slate-850">
+              <div>
+                <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider">សកម្មភាពថ្មីៗ (Live Event Ticker)</span>
+                <h4 className="text-sm font-black text-white mt-1">ព្រឹត្តិការណ៍បំបាត់ភាពតានតឹង 🔨</h4>
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-405 rounded-lg">គ្រូ ៣</span>
+            </div>
+
+            <div className="flex-1 my-3 overflow-y-auto max-h-[160px] min-h-[160px] custom-scrollbar text-xs font-sans space-y-2 text-left self-stretch">
+              {activityLogs.length === 0 ? (
+                <div className="text-center py-8 text-slate-600 font-bold text-[10px]">
+                  មិនទាន់មានសកម្មភាពលំហែកាយនៅឡើយទេ...
+                </div>
+              ) : (
+                activityLogs.map((log) => (
+                  <div key={log.id} className="flex items-center gap-2 p-1 border-b border-slate-850 hover:bg-slate-900/40 rounded transition-all">
+                    <span className="text-sm select-none shrink-0">{log.emoji}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] leading-tight text-slate-350">
+                        <strong className="text-white font-black">{log.name}</strong> {log.text}
+                      </p>
+                      <p className="text-[8px] text-slate-600 font-bold mt-0.5">
+                        {new Date(log.time).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
