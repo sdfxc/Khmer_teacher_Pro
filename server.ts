@@ -41,7 +41,8 @@ app.post('/api/ai/generate-quiz', async (req, res) => {
     textContext, // raw text prompt or pasted text
     fileBase64,  // base64 of image / doc
     fileMimeType, // e.g. "image/png", "application/pdf"
-    clientApiKey // user's custom api key from frontend
+    clientApiKey, // user's custom api key from frontend
+    defaultTimer = 20
   } = req.body;
 
   const activeApiKey = clientApiKey || process.env.GEMINI_API_KEY;
@@ -91,7 +92,7 @@ Return a JSON array containing objects with the following EXACT properties:
 3. "options" (array of strings): For multiple_choice, provide exactly 4 answers. For true_false, provide exactly ['ត្រូវ', 'ខុស'] (if khmer) or ['True', 'False'] (if english). For fill_blank and short_answer, this should be empty.
 4. "correctAnswer" (string): Must match EXACTLY one of the choices for multiple_choice or true_false. For fill_blank/short_answer, it must be the correct short keyword answer text.
 5. "explanation" (string): Explaining the correct answer.
-6. "timer" (number): Timer in seconds (default 25).
+6. "timer" (number): Timer in seconds. Use EXACTLY ${defaultTimer} seconds for every single question.
 7. "points" (number): Points value (default 1000).
 8. "difficulty" (string): "easy", "medium", or "hard".
 `;

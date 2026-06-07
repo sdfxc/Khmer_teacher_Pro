@@ -21,6 +21,7 @@ async function generateQuizDirectlyOnClient(params: {
   fileBase64: string;
   fileMimeType: string;
   apiKey: string;
+  defaultTimer?: number;
 }): Promise<Response> {
   const {
     subject,
@@ -31,7 +32,8 @@ async function generateQuizDirectlyOnClient(params: {
     textContext,
     fileBase64,
     fileMimeType,
-    apiKey
+    apiKey,
+    defaultTimer = 20
   } = params;
 
   let basePrompt = `You are StudyPlay AI, a highly advanced educational content generator specializing in interactive quizzes for students aged 6-18. 
@@ -60,7 +62,7 @@ Return a JSON array containing objects with the following EXACT properties:
 3. "options" (array of strings): For multiple_choice, provide exactly 4 answers. For true_false, provide exactly ['ត្រូវ', 'ខុស'] (if khmer) or ['True', 'False'] (if english). For fill_blank and short_answer, this should be empty.
 4. "correctAnswer" (string): Must match EXACTLY one of the choices for multiple_choice or true_false. For fill_blank/short_answer, it must be the correct short keyword answer text.
 5. "explanation" (string): Explaining the correct answer.
-6. "timer" (number): Timer in seconds (default 25).
+6. "timer" (number): Timer in seconds. Use EXACTLY ${defaultTimer} seconds for every single question.
 7. "points" (number): Points value (default 1000).
 8. "difficulty" (string): "easy", "medium", or "hard".
 `;
@@ -247,6 +249,8 @@ export default function QuizCreator() {
   const [aiTopic, setAiTopic] = useState('');
   const [aiNumQuestions, setAiNumQuestions] = useState(5);
   const [isCustomQuestions, setIsCustomQuestions] = useState(false);
+  const [aiDefaultTimer, setAiDefaultTimer] = useState(20);
+  const [isCustomTimer, setIsCustomTimer] = useState(false);
   const [aiLanguageFormat, setAiLanguageFormat] = useState<'khmer' | 'english'>('khmer');
   const [aiTextContext, setAiTextContext] = useState('');
   const [optionsFormat, setOptionsFormat] = useState<'khmer' | 'english'>('khmer');
@@ -655,7 +659,8 @@ export default function QuizCreator() {
           textContext: aiTextContext,
           fileBase64: uploadedFileBase64,
           fileMimeType: uploadedFileMimeType,
-          apiKey: actualKey
+          apiKey: actualKey,
+          defaultTimer: aiDefaultTimer
         });
       } else {
         // Otherwise, first attempt server-side generation
@@ -674,7 +679,8 @@ export default function QuizCreator() {
               textContext: aiTextContext,
               fileBase64: uploadedFileBase64,
               fileMimeType: uploadedFileMimeType,
-              clientApiKey: actualKey
+              clientApiKey: actualKey,
+              defaultTimer: aiDefaultTimer
             })
           });
         } catch (networkErr) {
@@ -690,7 +696,8 @@ export default function QuizCreator() {
               textContext: aiTextContext,
               fileBase64: uploadedFileBase64,
               fileMimeType: uploadedFileMimeType,
-              apiKey: actualKey
+              apiKey: actualKey,
+              defaultTimer: aiDefaultTimer
             });
           } else {
             throw networkErr;
@@ -712,7 +719,8 @@ export default function QuizCreator() {
               textContext: aiTextContext,
               fileBase64: uploadedFileBase64,
               fileMimeType: uploadedFileMimeType,
-              apiKey: actualKey
+              apiKey: actualKey,
+              defaultTimer: aiDefaultTimer
             });
           } catch (fallbackErr: any) {
             console.error('Direct fallback also failed:', fallbackErr);
@@ -1119,7 +1127,7 @@ export default function QuizCreator() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-2xs text-slate-400 font-bold block mb-1.5">🔢 ចំនួនសំណួរ (Questions)</label>
                     <div className="space-y-2">
@@ -1167,6 +1175,58 @@ export default function QuizCreator() {
                           />
                           <span className="absolute right-3 top-2 text-2xs text-slate-500">
                             សំណួរ
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-2xs text-slate-400 font-bold block mb-1.5">⏱️ រយៈពេលឆ្លើយ (Timer per Question)</label>
+                    <div className="space-y-2">
+                      <select
+                        value={isCustomTimer ? 'custom' : aiDefaultTimer}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'custom') {
+                            setIsCustomTimer(true);
+                            if (aiDefaultTimer < 5 || aiDefaultTimer > 300) {
+                              setAiDefaultTimer(20);
+                            }
+                          } else {
+                            setIsCustomTimer(false);
+                            setAiDefaultTimer(parseInt(val, 10));
+                          }
+                        }}
+                        className="w-full bg-slate-905 border border-slate-705 px-3 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value={10}>១០ វិនាទី (10s)</option>
+                        <option value={15}>១៥ វិនាទី (15s)</option>
+                        <option value={20}>២០ វិនាទី (20s)</option>
+                        <option value={30}>៣០ វិនាទី (30s)</option>
+                        <option value={45}>៤៥ វិនាទី (45s)</option>
+                        <option value={60}>៦០ វិនាទី (60s)</option>
+                        <option value={120}>១២០ វិនាទី (120s)</option>
+                        <option value={180}>១៨០ វិនាទី (180s)</option>
+                        <option value="custom">✍️ កំណត់ពេលផ្ទាល់ខ្លួន... (Custom)</option>
+                      </select>
+
+                      {isCustomTimer && (
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={1}
+                            max={3600}
+                            value={aiDefaultTimer}
+                            onChange={(e) => {
+                              const parsed = parseInt(e.target.value, 10);
+                              setAiDefaultTimer(isNaN(parsed) ? 10 : Math.max(1, Math.min(3600, parsed)));
+                            }}
+                            className="w-full bg-slate-900 border border-slate-705 px-3 py-2 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            placeholder="វិនាទី (Seconds)"
+                          />
+                          <span className="absolute right-3 top-2 text-2xs text-slate-500">
+                            វិនាទី
                           </span>
                         </div>
                       )}
@@ -1411,6 +1471,20 @@ export default function QuizCreator() {
                       </button>
                     ))}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curTime = activeQ.timer || 20;
+                      setQuestions(prev => prev.map(q => ({ ...q, timer: curTime })));
+                      gameAudio.playTick();
+                      setSuccessMsg(`បានអនុវត្តរយៈពេល ${curTime} វិនាទីលើគ្រប់សំណួរទាំងអស់ដោយជោគជ័យ!`);
+                      setTimeout(() => setSuccessMsg(''), 4000);
+                    }}
+                    className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 font-black block transition cursor-pointer hover:underline flex items-center gap-1"
+                  >
+                    🔄 អនុវត្តរយៈពេលនេះលើគ្រប់សំណួរ (Apply to All Questions)
+                  </button>
                 </div>
 
                 <div>
