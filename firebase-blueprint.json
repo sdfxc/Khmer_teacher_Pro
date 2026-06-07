@@ -1,66 +1,182 @@
 {
   "entities": {
     "Teacher": {
-      "title": "Teacher",
-      "description": "Represent a teacher account",
+      "title": "Teacher Profile",
+      "description": "Stores custom local credentials and profile details of teachers who register manually",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "schoolName": { "type": "string" },
-        "subjects": { "type": "string" },
         "username": { "type": "string" },
         "password": { "type": "string" },
+        "name": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "subject": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "name", "schoolName", "username", "password"]
+      "required": ["username", "password", "name", "schoolName", "createdAt"]
     },
-    "Class": {
-      "title": "Class",
-      "description": "Represent a classroom created by a teacher",
+    "User": {
+      "title": "User Profile",
+      "description": "Stores details about teachers and students, their XP, level, unlocked badges, etc.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
         "name": { "type": "string" },
-        "pickedIds": { "type": "array" },
-        "cards": { "type": "array" },
+        "role": { "type": "string", "enum": ["teacher", "student"] },
+        "xp": { "type": "integer" },
+        "level": { "type": "integer" },
+        "badges": { "type": "array" },
+        "streak": { "type": "integer" },
+        "lastActive": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "name"]
+      "required": ["id", "email", "name", "role", "xp", "level", "createdAt"]
     },
-    "Student": {
-      "title": "Student",
-      "description": "Represent a student inside a class",
+    "Quiz": {
+      "title": "Quiz Set",
+      "description": "A quiz set containing multiple questions created by a teacher",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "name": { "type": "string" },
-        "score": { "type": "number" },
-        "emoji": { "type": "string" },
-        "gender": { "type": "string", "enum": ["ប្រុស", "ស្រី"] },
-        "status": { "type": "string", "enum": ["ឆ្នើម", "សកម្ម", "កំពុងរីកចម្រើន", "គួរឲ្យបារម្ភ"] },
-        "classId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "questionCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "name", "score"]
+      "required": ["id", "title", "creatorId", "questionCount", "createdAt", "updatedAt"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "An educational question within a quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quizId": { "type": "string" },
+        "type": { "type": "string", "enum": ["multiple_choice", "true_false", "fill_blank", "matching", "short_answer"] },
+        "text": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "timer": { "type": "integer" },
+        "points": { "type": "integer" },
+        "order": { "type": "integer" },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "string" },
+        "matchingPairs": { "type": "object" }
+      },
+      "required": ["id", "quizId", "type", "text", "timer", "points", "order"]
+    },
+    "Game": {
+      "title": "Game Session",
+      "description": "A live hostable play session for a quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gameCode": { "type": "string" },
+        "quizId": { "type": "string" },
+        "hostId": { "type": "string" },
+        "quizTitle": { "type": "string" },
+        "status": { "type": "string", "enum": ["lobby", "playing", "leaderboard", "finished"] },
+        "gameMode": { "type": "string", "enum": ["classic", "speed", "team", "survival"] },
+        "currentQuestionId": { "type": "string" },
+        "currentQuestionIndex": { "type": "integer" },
+        "questionStatus": { "type": "string", "enum": ["showing", "counting_down", "times_up"] },
+        "currentQuestionStartedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "gameCode", "quizId", "hostId", "status", "gameMode", "currentQuestionIndex", "createdAt"]
+    },
+    "Player": {
+      "title": "Player Session",
+      "description": "A student player in a live game",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gameId": { "type": "string" },
+        "nickname": { "type": "string" },
+        "score": { "type": "integer" },
+        "streak": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "lastAnsweredQuestionIndex": { "type": "integer" },
+        "lastAnswerCorrect": { "type": "boolean" },
+        "answers": { "type": "object" }
+      },
+      "required": ["id", "gameId", "nickname", "score", "streak", "correctCount", "joinedAt"]
+    },
+    "Result": {
+      "title": "Game Result",
+      "description": "Historical record of games played",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gameId": { "type": "string" },
+        "quizId": { "type": "string" },
+        "quizTitle": { "type": "string" },
+        "hostId": { "type": "string" },
+        "playerCount": { "type": "integer" },
+        "topPlayers": { "type": "array" },
+        "playedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Leaderboards": {
+      "title": "Leaderboard Record",
+      "description": "Dynamic or snapshot records of high scores",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gameId": { "type": "string" },
+        "topScores": { "type": "array" }
+      }
+    },
+    "Achievements": {
+      "title": "Achievements Definition",
+      "description": "Global or user achievement metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "icon": { "type": "string" },
+        "points": { "type": "integer" }
+      }
     }
   },
   "firestore": {
     "/teachers/{teacherId}": {
       "schema": "Teacher",
-      "description": "Collection of teachers."
+      "description": "Custom local teacher accounts database dictionary"
     },
-    "/teachers/{teacherId}/classes/{classId}": {
-      "schema": "Class",
-      "description": "Collection of classes belonging to a teacher."
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Global users dictionary"
     },
-    "/teachers/{teacherId}/classes/{classId}/students/{studentId}": {
-      "schema": "Student",
-      "description": "Collection of students inside a class."
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Teacher educational quiz collections"
     },
-    "/teachers/{teacherId}/classes/{classId}/groupsData/{docId}": {
-      "schema": "object",
-      "description": "Divided classroom groups data."
+    "/quizzes/{quizId}/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Subcollection of questions inside a quiz"
+    },
+    "/games/{gameId}": {
+      "schema": "Game",
+      "description": "Live game lobbies hosted"
+    },
+    "/games/{gameId}/players/{playerId}": {
+      "schema": "Player",
+      "description": "Active players in a hosted session"
+    },
+    "/games/{gameId}/leaderboard/{leaderboardId}": {
+      "schema": "Leaderboards",
+      "description": "Leaderboards tracking score inside a live session"
+    },
+    "/results/{resultId}": {
+      "schema": "Result",
+      "description": "Finished game session historical audits"
+    },
+    "/achievements/{achievementId}": {
+      "schema": "Achievements",
+      "description": "Reference lookup containing definitions of milestones"
     }
   }
 }
