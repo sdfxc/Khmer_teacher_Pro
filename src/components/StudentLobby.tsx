@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Crown, QrCode, Award, Trophy, Sparkles, Timer, Check, Copy, 
   Plus, Users, CheckCircle, TrendingUp, UserCheck, Volume2, Tv, RefreshCw, Smartphone,
-  HelpCircle, AlertCircle, Play, ArrowRight, XCircle, Info, ChevronRight, Trash2, Pencil
+  HelpCircle, AlertCircle, Play, ArrowRight, XCircle, Info, ChevronRight, Pencil, Trash2
 } from 'lucide-react';
-import { db, doc, setDoc, deleteDoc, onSnapshot } from '../lib/firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import FormulaRenderer from './FormulaRenderer';
 import { Student, QuizCard } from '../types';
 import confetti from 'canvas-confetti';
@@ -21,8 +22,6 @@ interface StudentLobbyProps {
   setActiveCardId: (id: string | null) => void;
   activeCardState: 'answering' | 'revealed';
   setActiveCardState: (state: 'answering' | 'revealed') => void;
-  chapters?: any[];
-  handleSelectRoom?: (roomId: string) => void;
 }
 
 export default function StudentLobby({
@@ -36,262 +35,52 @@ export default function StudentLobby({
   isDarkMode,
   setActiveCardId,
   activeCardState,
-  setActiveCardState,
-  chapters = [],
-  handleSelectRoom
+  setActiveCardState
 }: StudentLobbyProps) {
   const [copied, setCopied] = useState(false);
-  const [linkType, setLinkType] = useState<'public' | 'dev'>('public');
   const [showPodium, setShowPodium] = useState(false);
   const [revealStep, setRevealStep] = useState(0); // 0 = none, 1 = Rank 5, 2 = Rank 4, 3 = Rank 3, 4 = Rank 2, 5 = Rank 1
   const [liveLeftTime, setLiveLeftTime] = useState<number>(25);
-  const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<'auto' | 'aistudio' | 'vercel'>('auto');
 
-  const [pointsPerQuestion, setPointsPerQuestion] = useState<number>(100);
-  const [autoApprove, setAutoApprove] = useState<boolean>(false);
-
-  // Real-time student relaxation game tracking states
-  const [lastHandledActions, setLastHandledActions] = useState<Record<string, number>>({});
-  const [activityLogs, setActivityLogs] = useState<any[]>([]);
-  const [activeStarNotes, setActiveStarNotes] = useState<any[]>([]);
-
-  // Function to synthesize soft bell notes on the teacher computer
-  const playTeacherBell = (note: string) => {
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const now = ctx.currentTime;
-      
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      let freq = 523.25; // C5
-      if (note === 'D5') freq = 587.33;
-      else if (note === 'E5') freq = 659.25;
-      else if (note === 'G5') freq = 783.99;
-      else if (note === 'A5') freq = 880.00;
-      else if (note === 'C6') freq = 1046.50;
-      
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now);
-      
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
-      
-      osc.start(now);
-      osc.stop(now + 1.2);
-    } catch (e) {
-      console.warn("Audio Context blocked");
-    }
-  };
-
-  // Watch students for game updates
-  useEffect(() => {
-    if (!students || students.length === 0) return;
-    
-    students.forEach(student => {
-      if (student.gameAction && student.gameAction.timestamp) {
-        const lastTime = lastHandledActions[student.id] || 0;
-        if (student.gameAction.timestamp > lastTime) {
-          // New action detected!
-          setLastHandledActions(prev => ({
-            ...prev,
-            [student.id]: student.gameAction.timestamp
-          }));
-
-          // Add to activity logs
-          setActivityLogs(prev => [
-            { 
-              id: `${student.id}-${student.gameAction.timestamp}`, 
-              name: student.name, 
-              emoji: student.emoji || '🧑‍🎓',
-              text: student.gameAction.text, 
-              time: student.gameAction.timestamp 
-            },
-            ...prev.slice(0, 19)
-          ]);
-
-          // Play sound and trigger note star if it's music
-          if (student.gameAction.game === 'sound' && student.gameAction.note) {
-            playTeacherBell(student.gameAction.note);
-            
-            const newStar = {
-              id: `${student.id}-${student.gameAction.timestamp}`,
-              studentName: student.name,
-              emoji: student.emoji || '🧑‍🎓',
-              note: student.gameAction.note,
-              x: Math.random() * 80 + 10,
-              y: Math.random() * 60 + 20,
-              timestamp: Date.now()
-            };
-            setActiveStarNotes(prev => [...prev, newStar]);
-            setTimeout(() => {
-              setActiveStarNotes(prev => prev.filter(s => s.id !== newStar.id));
-            }, 2500);
-          }
-        }
-      }
-    });
-  }, [students, lastHandledActions]);
-
-  const handleTriggerCelebration = async () => {
-    confetti({
-      particleCount: 150,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
-    
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    try {
-      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
-      await setDoc(classDocRef, { 
-        celebrationTime: Date.now(),
-        celebrationActive: true
-      }, { merge: true });
-      
-      // Auto reset celebration Active state after 5 seconds
-      setTimeout(async () => {
-        try {
-          await setDoc(classDocRef, { celebrationActive: false }, { merge: true });
-        } catch (err) {
-          console.error(err);
-        }
-      }, 5000);
-    } catch (err) {
-      console.error("Failed to trigger shared celebration:", err);
-    }
-  };
-
-  // Read pointsPerQuestion and autoApprove settings from Class document in Firestore
-  useEffect(() => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
-    const unsubscribe = onSnapshot(classDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data && typeof data.pointsPerQuestion === 'number') {
-          setPointsPerQuestion(data.pointsPerQuestion);
-        }
-        if (data && typeof data.autoApprove === 'boolean') {
-          setAutoApprove(data.autoApprove);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, [activeClassId, teacher]);
-
-  const handleUpdatePoints = async (pts: number) => {
-    setPointsPerQuestion(pts);
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    try {
-      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
-      await setDoc(classDocRef, { pointsPerQuestion: pts }, { merge: true });
-    } catch (err) {
-      console.error("Failed to sync points definition:", err);
-    }
-  };
-
-  const handleToggleAutoApprove = async () => {
-    const nextVal = !autoApprove;
-    setAutoApprove(nextVal);
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    try {
-      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
-      await setDoc(classDocRef, { autoApprove: nextVal }, { merge: true });
-    } catch (err) {
-      console.error("Failed to sync auto-approve:", err);
-    }
-  };
-
-  // Generate a stable 6-digit PIN from teacherId and classId
-  const generateGamePIN = (tId: string, cId: string) => {
-    let hash = 0;
-    const str = `${tId ?? 'local'}_${cId ?? 'class-7a'}`;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const finalPin = Math.abs(hash % 900000) + 100000; // Always 6 digits: 100000 - 999999
-    return String(finalPin);
-  };
-
-  useEffect(() => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    const pin = generateGamePIN(tId, activeClassId);
-    
-    const registerPin = async () => {
-      try {
-        const pinDocRef = doc(db, 'active_pins', pin);
-        await setDoc(pinDocRef, {
-          pin,
-          teacherId: tId,
-          classId: activeClassId,
-          roomId: activeRoomId || 'default',
-          className: className,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch (err) {
-        console.warn("Failed to register Game PIN on Cloud:", err);
-      }
-    };
-    registerPin();
-  }, [activeClassId, teacher, activeRoomId, className]);
+  // Simulated Players State (fallback when no real approved players)
+  const isUsingSimulatedPlayers = students.filter(s => s.isApproved !== false).length === 0;
+  const [simulatedAnswers, setSimulatedAnswers] = useState<Record<string, { option: number; isCorrect: boolean; points: number }>>({});
+  const [simulatedScores, setSimulatedScores] = useState<Record<string, number>>({
+    "sim-1": 130,
+    "sim-2": 95,
+    "sim-3": 115,
+    "sim-4": 80,
+    "sim-5": 140
+  });
 
   const baseSimulatedPlayers: Student[] = [
-    { id: "sim-1", name: "សូភក្តិ / Sophak", score: 120, emoji: "🧑‍🎓", gender: "ប្រុស", status: "សកម្ម", isApproved: true, isSimulated: true },
-    { id: "sim-2", name: "ចិន្តា / Chenda", score: 90, emoji: "🦊", gender: "ស្រី", status: "សកម្ម", isApproved: true, isSimulated: true },
-    { id: "sim-3", name: "វិសាល / Visal", score: 110, emoji: "🦁", gender: "ប្រុស", status: "សកម្ម", isApproved: true, isSimulated: true },
-    { id: "sim-4", name: "ដារ៉ា / Dara", score: 80, emoji: "🚀", gender: "ប្រុស", status: "សកម្ម", isApproved: true, isSimulated: true },
-    { id: "sim-5", name: "បូរី / Borey", score: 130, emoji: "🔥", gender: "ប្រុស", status: "សកម្ម", isApproved: true, isSimulated: true }
+    { id: "sim-1", name: "សូភក្តិ / Sophak", score: 130, emoji: "🧑‍🎓", gender: "ប្រុស", status: "សកម្ម", isApproved: true },
+    { id: "sim-2", name: "ចិន្តា / Chenda", score: 95, emoji: "🦊", gender: "ស្រី", status: "សកម្ម", isApproved: true },
+    { id: "sim-3", name: "វិសាល / Visal", score: 115, emoji: "🦁", gender: "ប្រុស", status: "សកម្ម", isApproved: true },
+    { id: "sim-4", name: "ដារ៉ា / Dara", score: 80, emoji: "🚀", gender: "ប្រុស", status: "សកម្ម", isApproved: true },
+    { id: "sim-5", name: "បូរី / Borey", score: 140, emoji: "🔥", gender: "ប្រុស", status: "សកម្ម", isApproved: true }
   ];
-
-  // Auto-populate simulated players inside Firestore if first-time load
-  useEffect(() => {
-    if (!activeClassId) return;
-    const key = `sim_populated_${activeClassId}`;
-    if (localStorage.getItem(key)) return;
-
-    const autoPopulate = async () => {
-      const tId = teacher?.id || 'local';
-      try {
-        await Promise.all(
-          baseSimulatedPlayers.map(p => {
-            const docRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', p.id);
-            return setDoc(docRef, p);
-          })
-        );
-        localStorage.setItem(key, 'true');
-      } catch (err) {
-        console.error("Auto-population of simulated players failed:", err);
-      }
-    };
-    autoPopulate();
-  }, [activeClassId, teacher]);
-
-  // Form toggles and states for manual & bulk additions
-  const [manualNameInput, setManualNameInput] = useState('');
-  const [manualEmojiInput, setManualEmojiInput] = useState('🧑‍🎓');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [bulkNamesInput, setBulkNamesInput] = useState('');
-  const [showBulkForm, setShowBulkForm] = useState(false);
-  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
-  const [editingNameValue, setEditingNameValue] = useState('');
 
   // Active question and metadata calculations
   const activeCard = cards.find(c => c.id === activeCardId) || null;
   const currentQuestion = activeCard?.question || null;
 
-  // Filter approved and pending join requests from synced Firestore
-  const approvedStudents = students.filter(s => s.isApproved === true);
-  const isUsingSimulatedPlayers = approvedStudents.some(s => s.isSimulated === true);
-  const pendingApprovalStudents = students.filter(s => s.isApproved === false && !s.isDeclined);
+  const simulatedPlayers = baseSimulatedPlayers.map(player => {
+    const simAns = simulatedAnswers[player.id];
+    const score = simulatedScores[player.id] ?? player.score;
+    return {
+      ...player,
+      score,
+      currentAnswerCardId: simAns ? activeCardId : undefined,
+      currentAnswerIndex: simAns ? simAns.option : undefined,
+      currentAnswerIsCorrect: simAns ? simAns.isCorrect : undefined
+    } as Student;
+  });
+
+  // Filter approved and pending join requests
+  const approvedStudents = isUsingSimulatedPlayers ? simulatedPlayers : students.filter(s => s.isApproved !== false);
+  const pendingApprovalStudents = students.filter(s => s.isApproved === false);
 
   const answeredStudents = approvedStudents.filter(s => s.currentAnswerCardId === activeCardId);
   const numberAnswered = answeredStudents.length;
@@ -303,62 +92,63 @@ export default function StudentLobby({
 
   // Automated simulation of answers logic
   useEffect(() => {
-    if (!activeCardId || activeCardState !== 'answering' || !currentQuestion || approvedStudents.length === 0) {
+    if (!isUsingSimulatedPlayers || !activeCardId || activeCardState !== 'answering' || !currentQuestion) {
+      setSimulatedAnswers({});
       return;
     }
 
-    const tId = teacher?.id || 'local';
-    const simulatedActive = approvedStudents.filter(s => s.isSimulated === true);
-
     const timeoutIds: any[] = [];
-    simulatedActive.forEach((player, idx) => {
-      if (player.currentAnswerCardId === activeCardId) return;
-
-      const delay = 1000 + idx * 1500 + Math.random() * 800;
-      const t = setTimeout(async () => {
+    simulatedPlayers.forEach((player, idx) => {
+      const delay = 1000 + idx * 1200 + Math.random() * 600;
+      const t = setTimeout(() => {
         const correctOpt = currentQuestion.correctIndex ?? 0;
         const isCorrect = Math.random() > 0.25; // 75% correct
         const chosenOpt = isCorrect ? correctOpt : (correctOpt + 1) % (currentQuestion.options?.length ?? 4);
-        const points = isCorrect ? pointsPerQuestion : 0;
+        const points = isCorrect ? Math.round(100 + Math.random() * 50) : 0;
 
-        try {
-          const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', player.id);
-          await setDoc(studentDocRef, {
-            currentAnswerCardId: activeCardId,
-            currentAnswerIndex: chosenOpt,
-            currentAnswerIsCorrect: isCorrect,
-            score: (player.score || 0) + points,
-            status: isCorrect ? 'ឆ្នើម' : 'កំពុងរីកចម្រើន'
-          }, { merge: true });
-        } catch (err) {
-          console.error("Firestore simulated answer write failed:", err);
-        }
+        setSimulatedAnswers(prev => ({
+          ...prev,
+          [player.id]: { option: chosenOpt, isCorrect, points }
+        }));
       }, delay);
       timeoutIds.push(t);
     });
 
     return () => timeoutIds.forEach(clearTimeout);
-  }, [activeCardId, activeCardState, approvedStudents, currentQuestion, pointsPerQuestion]);
+  }, [activeCardId, activeCardState, isUsingSimulatedPlayers, currentQuestion]);
+
+  // Sync simulated answer scores to student simulatedScoreboard on reveal state
+  useEffect(() => {
+    if (activeCardState === 'revealed' && isUsingSimulatedPlayers) {
+      setSimulatedScores(prev => {
+        const next = { ...prev };
+        (Object.entries(simulatedAnswers) as [string, { option: number; isCorrect: boolean; points: number }][]).forEach(([pid, ans]) => {
+          if (ans.isCorrect) {
+            next[pid] = (next[pid] ?? 0) + ans.points;
+          }
+        });
+        return next;
+      });
+    }
+  }, [activeCardState]);
 
   const handleApproveStudent = async (studentId: string) => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
+    if (!teacher || !activeClassId) return;
     try {
-      const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', studentId);
-      await setDoc(studentDocRef, { isApproved: true, isDeclined: false }, { merge: true });
+      const studentDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', studentId);
+      await setDoc(studentDocRef, { isApproved: true }, { merge: true });
     } catch (err) {
       console.error("Student approval failed:", err);
     }
   };
 
   const handleApproveAllStudents = async () => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
+    if (!teacher || !activeClassId) return;
     try {
       await Promise.all(
         pendingApprovalStudents.map(student => {
-          const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', student.id);
-          return setDoc(studentDocRef, { isApproved: true, isDeclined: false }, { merge: true });
+          const studentDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', student.id);
+          return setDoc(studentDocRef, { isApproved: true }, { merge: true });
         })
       );
     } catch (err) {
@@ -367,23 +157,48 @@ export default function StudentLobby({
   };
 
   const handleDeclineStudent = async (studentId: string) => {
+    const currentTeacherId = teacher?.id || 'local';
     if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
     try {
-      const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', studentId);
-      await setDoc(studentDocRef, { isApproved: false, isDeclined: true }, { merge: true });
+      const studentDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId, 'students', studentId);
+      await deleteDoc(studentDocRef);
     } catch (err) {
       console.error("Decline student failed:", err);
+    }
+  };
+
+  const handleEditStudentNameInLobby = async (studentId: string, currentName: string) => {
+    const newName = window.prompt("សូមបញ្ចូលឈ្មោះថ្មីរបស់សិស្ស៖", currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      const trimmedName = newName.trim();
+      const currentTeacherId = teacher?.id || 'local';
+      try {
+        const studentDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId, 'students', studentId);
+        await setDoc(studentDocRef, { name: trimmedName }, { merge: true });
+      } catch (err) {
+        console.error("Failed to update student name in lobby:", err);
+      }
+    }
+  };
+
+  const handleRemoveStudentFromLobby = async (studentId: string, studentName: string) => {
+    if (window.confirm(`តើលោកគ្រូ អ្នកគ្រូ ពិតជាចង់លុបសិស្ស «${studentName}» នេះចេញមែនទេ?`)) {
+      const currentTeacherId = teacher?.id || 'local';
+      try {
+        const studentDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId, 'students', studentId);
+        await deleteDoc(studentDocRef);
+      } catch (err) {
+        console.error("Failed to delete student in lobby:", err);
+      }
     }
   };
 
   // 1. Reveal answer triggers (both teacher state update and db write)
   const handleRevealAnswer = async () => {
     setActiveCardState('revealed');
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
+    if (!teacher || !activeClassId) return;
     try {
-      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+      const classDocRef = doc(db, 'teachers', teacher.id, 'classes', activeClassId);
       await setDoc(classDocRef, {
         activeCardState: 'revealed'
       }, { merge: true });
@@ -412,11 +227,22 @@ export default function StudentLobby({
     return () => clearInterval(timer);
   }, [activeCardId, activeCardState]);
 
+  // 3. Auto-reveal when all joined students have submitted an option
+  useEffect(() => {
+    if (
+      activeCardId && 
+      activeCardState === 'answering' && 
+      totalStudentsCount > 0 && 
+      numberAnswered >= totalStudentsCount
+    ) {
+      handleRevealAnswer();
+    }
+  }, [students, activeCardId, activeCardState, numberAnswered, totalStudentsCount]);
+
   // 4. Advance questions handler
   const handleNextQuestion = async () => {
-    setAutoAdvanceCountdown(null);
-    if (!activeRoomId || cards.length === 0 || !activeClassId) return;
-    const tId = teacher?.id || 'local';
+    if (!activeRoomId || cards.length === 0) return;
+    const currentTeacherId = teacher?.id || 'local';
     
     const currentIdx = cards.findIndex(c => c.id === activeCardId);
     let nextCard = null;
@@ -433,10 +259,11 @@ export default function StudentLobby({
       setActiveCardState('answering');
       
       try {
-        const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+        const classDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId);
         await setDoc(classDocRef, {
           activeCardId: nextCard.id,
-          activeCardState: 'answering'
+          activeCardState: 'answering',
+          activeCard: nextCard
         }, { merge: true });
       } catch (err) {
         console.error("Next question sync failed:", err);
@@ -445,10 +272,11 @@ export default function StudentLobby({
       // End game and show victory podium ceremony
       setActiveCardId(null);
       try {
-        const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+        const classDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId);
         await setDoc(classDocRef, {
           activeCardId: null,
-          activeCardState: 'answering'
+          activeCardState: 'answering',
+          activeCard: null
         }, { merge: true });
       } catch (err) {
         console.error("Reset active game state failed:", err);
@@ -457,52 +285,27 @@ export default function StudentLobby({
     }
   };
 
-  // 3. Auto-reveal when all joined students have submitted an option
+  // 4b. Auto-advance to the next question 3 seconds after an answer has been revealed
   useEffect(() => {
-    if (
-      activeCardId && 
-      activeCardState === 'answering' && 
-      totalStudentsCount > 0 && 
-      numberAnswered >= totalStudentsCount
-    ) {
-      handleRevealAnswer();
-    }
-  }, [students, activeCardId, activeCardState, numberAnswered, totalStudentsCount]);
+    if (activeCardState !== 'revealed' || !activeCardId) return;
 
-  // 3b. Count down to auto-advanced next question when cards state is 'revealed'
-  useEffect(() => {
-    if (activeCardState !== 'revealed' || !activeCardId) {
-      setAutoAdvanceCountdown(null);
-      return;
-    }
+    const timer = setTimeout(() => {
+      handleNextQuestion();
+    }, 3000);
 
-    // Auto-advance count down: 5 seconds to digest results then proceed
-    setAutoAdvanceCountdown(5);
-
-    const advTimer = setInterval(() => {
-      setAutoAdvanceCountdown(prev => {
-        if (prev !== null && prev <= 1) {
-          clearInterval(advTimer);
-          handleNextQuestion();
-          return null;
-        }
-        return prev !== null ? prev - 1 : null;
-      });
-    }, 1000);
-
-    return () => clearInterval(advTimer);
-  }, [activeCardId, activeCardState]);
+    return () => clearTimeout(timer);
+  }, [activeCardState, activeCardId, cards, activeClassId]);
 
   // 5. Exit active game handler
   const handleExitGame = async () => {
     setActiveCardId(null);
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
+    const currentTeacherId = teacher?.id || 'local';
     try {
-      const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+      const classDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId);
       await setDoc(classDocRef, {
         activeCardId: null,
-        activeCardState: 'answering'
+        activeCardState: 'answering',
+        activeCard: null
       }, { merge: true });
     } catch (err) {
       console.error("Exit active game failed:", err);
@@ -511,52 +314,39 @@ export default function StudentLobby({
 
   // 6. Start the first live game question from the lobby
   const handleStartGameFirst = async () => {
-    if (cards.length === 0 || !activeClassId) return;
-    const tId = teacher?.id || 'local';
+    if (cards.length === 0) return;
     const firstQ = cards.find(c => c.question);
+    const currentTeacherId = teacher?.id || 'local';
     if (firstQ) {
       setActiveCardId(firstQ.id);
       setActiveCardState('answering');
       try {
-        const classDocRef = doc(db, 'teachers', tId, 'classes', activeClassId);
+        const classDocRef = doc(db, 'teachers', currentTeacherId, 'classes', activeClassId);
         await setDoc(classDocRef, {
           activeCardId: firstQ.id,
-          activeCardState: 'answering'
+          activeCardState: 'answering',
+          activeCard: firstQ
         }, { merge: true });
-
-        // Reset all students' scores and answer states on game restart so they start fresh
-        await Promise.all(
-          students.map(s => {
-            const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', s.id);
-            return setDoc(studentDocRef, {
-              score: 0,
-              currentAnswerCardId: null,
-              currentAnswerIndex: null,
-              currentAnswerIsCorrect: null,
-              status: 'សកម្ម'
-            }, { merge: true });
-          })
-        );
       } catch (err) {
         console.error("First question sync failed:", err);
       }
     }
   };
 
-  // Construct secure public join link to bypass developer sandbox 403 checks on mobile devices!
-  const getPublicJoinLink = () => {
-    let origin = window.location.origin;
-    if (origin.includes('ais-dev-')) {
-      origin = origin.replace('ais-dev-', 'ais-pre-');
+  // Dynamic join link for students
+  const getBaseOrigin = () => {
+    if (selectedDomain === 'aistudio') {
+      return 'https://ai.studio/apps/93d7f0ee-4f6b-44a7-b110-d2f72d2acec6';
     }
-    return `${origin}/?mode=student&classId=${activeClassId}&teacherId=${teacher?.id || 'local'}&roomId=${activeRoomId || 'default'}`;
+    if (selectedDomain === 'vercel') {
+      return 'https://khmer-teacher-pro-bql1.vercel.app';
+    }
+    return window.location.origin;
   };
 
-  const getDevJoinLink = () => {
-    return `${window.location.origin}/?mode=student&classId=${activeClassId}&teacherId=${teacher?.id || 'local'}&roomId=${activeRoomId || 'default'}`;
-  };
-
-  const studentJoinLink = linkType === 'public' ? getPublicJoinLink() : getDevJoinLink();
+  const baseOrigin = getBaseOrigin();
+  const separator = baseOrigin.includes('?') ? '&' : baseOrigin.endsWith('/') ? '' : '/';
+  const studentJoinLink = `${baseOrigin}${separator}?mode=student&classId=${activeClassId}&teacherId=${teacher?.id || 'local'}&roomId=${activeRoomId || 'default'}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(studentJoinLink);
@@ -714,115 +504,6 @@ export default function StudentLobby({
     };
   };
 
-  // Manual Student & Roster Management Functions
-  const handleAddManualStudent = async (name: string, emoji: string) => {
-    if (!activeClassId || !name.trim()) return;
-    const tId = teacher?.id || 'local';
-    const id = 'manual_' + Math.random().toString(36).substring(2, 9);
-    try {
-      const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', id);
-      await setDoc(studentDocRef, {
-        id,
-        name: name.trim(),
-        emoji,
-        score: 0,
-        gender: "ប្រុស",
-        status: "សកម្ម",
-        isApproved: true,
-        isSimulated: true // Mark simulated so their answers are automated!
-      });
-      setManualNameInput('');
-      setShowAddForm(false);
-    } catch (err) {
-      console.error("Failed to add individual student:", err);
-    }
-  };
-
-  const handleAddBulkStudents = async (rawNames: string) => {
-    if (!activeClassId || !rawNames.trim()) return;
-    const tId = teacher?.id || 'local';
-    const namesList = rawNames.split(/[\n,]+/).map(n => n.trim()).filter(Boolean);
-    const emojis = ["🧑‍🎓", "🦊", "🦁", "🚀", "🔥", "🐼", "⭐", "🦖", "🦄", "🎯", "🐨", "👑", "⚡", "🎉", "👾", "🐻", "🐝", "🐙", "💎", "🎯"];
-    
-    try {
-      await Promise.all(
-        namesList.map((name, index) => {
-          const id = 'manual_' + Math.random().toString(36).substring(2, 9) + '_' + index;
-          const emoji = emojis[index % emojis.length];
-          const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', id);
-          return setDoc(studentDocRef, {
-            id,
-            name,
-            emoji,
-            score: 0,
-            gender: "ប្រុស",
-            status: "សកម្ម",
-            isApproved: true,
-            isSimulated: true // Automatically simulates answering
-          });
-        })
-      );
-      setBulkNamesInput('');
-      setShowBulkForm(false);
-    } catch (err) {
-      console.error("Failed to bulk add students:", err);
-    }
-  };
-
-  const handleEditStudent = async (studentId: string, newName: string) => {
-    if (!activeClassId || !newName.trim()) return;
-    const tId = teacher?.id || 'local';
-    try {
-      const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', studentId);
-      await setDoc(studentDocRef, { name: newName.trim() }, { merge: true });
-      setEditingStudentId(null);
-    } catch (err) {
-      console.error("Failed to edit student's name:", err);
-    }
-  };
-
-  const handleDeleteStudent = async (studentId: string) => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    try {
-      const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', studentId);
-      await deleteDoc(studentDocRef);
-    } catch (err) {
-      console.error("Failed to delete student:", err);
-    }
-  };
-
-  const handleClearSimulated = async () => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    const targets = students.filter(s => s.id.startsWith('sim-') || s.id.startsWith('manual_') || s.isSimulated);
-    try {
-      await Promise.all(
-        targets.map(s => {
-          const studentDocRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', s.id);
-          return deleteDoc(studentDocRef);
-        })
-      );
-    } catch (err) {
-      console.error("Failed to clear simulated players:", err);
-    }
-  };
-
-  const handleLoadSimulated = async () => {
-    if (!activeClassId) return;
-    const tId = teacher?.id || 'local';
-    try {
-      await Promise.all(
-        baseSimulatedPlayers.map(p => {
-          const docRef = doc(db, 'teachers', tId, 'classes', activeClassId, 'students', p.id);
-          return setDoc(docRef, p);
-        })
-      );
-    } catch (err) {
-      console.error("Failed to load simulated players:", err);
-    }
-  };
-
   // Ranks calculations
   // Filter active/interactive roster of joined students
   const activeStudents = [...approvedStudents].filter(s => s.status !== 'គួរឲ្យបារម្ភ');
@@ -874,14 +555,18 @@ export default function StudentLobby({
 
           <div className="flex items-center gap-3 shrink-0">
             {/* Live Timer Meter */}
-            <div className="flex items-center gap-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2 rounded-2xl shadow-sm">
-              <Timer className={`w-5 h-5 ${liveLeftTime <= 5 || autoAdvanceCountdown !== null ? 'text-red-500 animate-pulse' : 'text-indigo-500'}`} />
+            <div className={`flex items-center gap-2.5 bg-white dark:bg-slate-900 border px-4 py-2 rounded-2xl shadow-sm transition-all duration-300 ${
+              liveLeftTime <= 5 && !isRevealed 
+                ? 'border-red-500/50 bg-red-50/50 dark:bg-red-950/20 scale-110 animate-bounce' 
+                : 'border-slate-200 dark:border-slate-800'
+            }`}>
+              <Timer className={`w-5 h-5 ${liveLeftTime <= 5 && !isRevealed ? 'text-red-550 dark:text-red-400 animate-pulse' : 'text-indigo-500'}`} />
               <div className="text-right">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">
-                  {autoAdvanceCountdown !== null ? 'សំណួរបន្ទាប់' : 'រយៈពេលនៅសល់'}
-                </p>
-                <p className="text-lg font-extrabold font-mono tracking-tight text-slate-800 dark:text-white mt-1 leading-none">
-                  {autoAdvanceCountdown !== null ? `${autoAdvanceCountdown} វិនាទី...` : (isRevealed ? 'បានបង្ហាញរួច' : `${liveLeftTime} វិនាទី`)}
+                <p className={`text-[9px] font-black uppercase tracking-wider leading-none ${liveLeftTime <= 5 && !isRevealed ? 'text-red-450 dark:text-red-400' : 'text-slate-400'}`}>រយៈពេលនៅសល់</p>
+                <p className={`text-lg font-extrabold font-mono tracking-tight mt-1 leading-none transition-all duration-300 ${
+                  liveLeftTime <= 5 && !isRevealed ? 'text-red-650 dark:text-red-400 text-xl' : 'text-slate-800 dark:text-white'
+                }`}>
+                  {isRevealed ? 'Revealed' : `${liveLeftTime} វិនាទី`}
                 </p>
               </div>
             </div>
@@ -907,18 +592,11 @@ export default function StudentLobby({
           />
         </div>
 
-        {autoAdvanceCountdown !== null && (
-          <div className="mb-4 p-4 bg-indigo-600/15 border-2 border-indigo-500/20 text-indigo-700 dark:text-indigo-400 rounded-3xl text-sm font-black flex items-center justify-center gap-2 animate-pulse shadow-md">
-            <span className="text-lg">🚀</span>
-            <span>សិស្សឆ្លើយរួចរាល់ទាំងអស់! សំណួរបន្ទាប់នឹងបន្តទៅមុខដោយស្វ័យប្រវត្តិក្នុងរយៈពេល <span className="font-mono text-lg font-black text-indigo-600 dark:text-indigo-400">{autoAdvanceCountdown}</span> វិនាទីទៀត...</span>
-          </div>
-        )}
-
         {/* Big Question Section */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/85 rounded-[2rem] p-8 md:p-12 shadow-sm relative overflow-hidden mb-6 flex flex-col items-center justify-center text-center">
           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-505 bg-indigo-500/5 rounded-full pointer-events-none -mr-16 -mt-16" />
           <span className="text-xs uppercase font-black tracking-widest text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-400 px-3.5 py-1.5 rounded-full mb-4">សំណួរលេខ {activeCard.number}</span>
-          <h2 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white leading-relaxed max-w-3xl break-words whitespace-normal word-break-break-word">
+          <h2 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white leading-relaxed max-w-3xl break-words whitespace-pre-wrap">
             <FormulaRenderer text={currentQuestion.text || ''} />
           </h2>
         </div>
@@ -955,7 +633,7 @@ export default function StudentLobby({
                   }`}>
                     {letter}
                   </span>
-                  <span className="text-sm sm:text-base font-bold truncate leading-snug max-w-full text-slate-800 dark:text-slate-200">
+                  <span className="text-sm sm:text-base font-bold break-words whitespace-normal leading-snug max-w-full text-slate-800 dark:text-slate-200">
                     <FormulaRenderer text={option} />
                   </span>
                 </div>
@@ -1050,7 +728,7 @@ export default function StudentLobby({
             <button
               type="button"
               onClick={handleNextQuestion}
-              className="flex items-center gap-1.5 px-6 py-2.5 bg-indigo-650 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-95 border-none"
+              className="flex items-center gap-1.5 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-95 border-none"
             >
               <span>សំណួរបន្ទាប់ (Next Question)</span>
               <ArrowRight className="w-4 h-4 text-white" />
@@ -1062,771 +740,409 @@ export default function StudentLobby({
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto custom-scrollbar relative">
-      {/* Chapter/Lesson Selection Board */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm flex flex-col gap-4 mb-6">
-        <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-          <Award className="w-5 h-5 text-indigo-500" />
-          <div className="text-left">
-            <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">ជ្រើសរើសមេរៀន និងសំណួរពីក្ដារសំណួរ (Choose Lesson Board) 📚</h3>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-0.5">សូមជ្រើសរើសជំពូក ឬមេរៀន ដើម្បីទាញយកសំណួរមកលេងក្នុងបន្ទប់ Live នេះ</p>
+    <div className={`flex-1 flex flex-col p-4 md:p-6 overflow-y-auto custom-scrollbar relative transition-colors duration-300 ${
+      isDarkMode ? 'bg-[#0b0f19] text-white' : 'bg-slate-50 text-slate-800'
+    }`}>
+      {/* Background visual effects for game feel */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.08)_0%,transparent_50%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.04)_0%,transparent_50%)] pointer-events-none" />
+
+      {/* Top Header Panel - Styled like original StudyPlay Host */}
+      <div className={`flex flex-col md:flex-row items-center justify-between pb-4 mb-6 border-b gap-4 relative z-10 shrink-0 ${
+        isDarkMode ? 'border-indigo-950/60' : 'border-slate-200'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-amber-500 rounded-xl flex items-center justify-center font-black text-xl text-white shadow-md shadow-indigo-500/10">
+            🎮
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-xl font-black tracking-tight flex items-center gap-1 ${
+                isDarkMode ? 'text-white' : 'text-slate-900'
+              }`}>
+                StudyPlay Host <span className="text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full">របៀបគ្រូ (Classic)</span>
+              </h1>
+            </div>
+            <p className={`text-[10px] font-bold mt-0.5 ${
+              isDarkMode ? 'text-slate-400' : 'text-slate-500'
+            }`}>
+              ថ្នាក់រៀន៖ <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{className}</span> • គាំទ្រការឆ្លើយតបពេលវេលាពិត (Connected Room Live Sync)
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Chapter Selection */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">ស្វែងរកជំពូក (Select Chapter)</label>
-            <select 
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-205 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-              onChange={(e) => {
-                const chap = chapters.find(c => c.id === e.target.value);
-                if (chap && chap.rooms?.length > 0) {
-                  if (handleSelectRoom) {
-                    handleSelectRoom(chap.rooms[0].id);
-                  }
-                }
-              }}
-              value={chapters.find(ch => ch.rooms?.some(r => r.id === activeRoomId))?.id || ''}
-            >
-              {chapters.length === 0 ? (
-                <option value="">គ្មានជំពូក</option>
-              ) : (
-                chapters.map((ch, idx) => (
-                  <option key={ch.id} value={ch.id}>
-                    {ch.name || `ជំពូកទី ${idx + 1}`} ({ch.rooms?.length || 0} មេរៀន)
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
-          {/* Lesson Selection */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">ស្វែងរកមេរៀន (Select Lesson / Board)</label>
-            <select 
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-205 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-              onChange={(e) => {
-                if (handleSelectRoom) {
-                  handleSelectRoom(e.target.value);
-                }
-              }}
-              value={activeRoomId || ''}
-            >
-              {(() => {
-                const currentChap = chapters.find(ch => ch.rooms?.some(r => r.id === activeRoomId)) || chapters[0];
-                if (!currentChap || !currentChap.rooms || currentChap.rooms.length === 0) {
-                  return <option value="">គ្មានមេរៀន</option>;
-                }
-                return currentChap.rooms.map((r, rIdx) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name || `មេរៀនទី ${rIdx + 1}`} ({r.cards?.filter(c => c.question)?.length || 0} សំណួរ)
-                  </option>
-                ));
-              })()}
-            </select>
-          </div>
-
-          {/* Points config column */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">កំណត់ពិន្ទុក្នុងមួយសំណួរ (Points Setting) 🎯</label>
-            <div className="flex gap-2 items-center">
-              <button
-                type="button"
-                onClick={() => handleUpdatePoints(100)}
-                className={`flex-1 py-1.5 px-3 text-xs font-black rounded-xl transition-all border outline-none cursor-pointer border-solid ${
-                  pointsPerQuestion === 100
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                100 ពិន្ទុ
-              </button>
-              <button
-                type="button"
-                onClick={() => handleUpdatePoints(5)}
-                className={`flex-1 py-1.5 px-3 text-xs font-black rounded-xl transition-all border outline-none cursor-pointer border-solid ${
-                  pointsPerQuestion === 5
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                5 ពិន្ទុ
-              </button>
-              <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 px-2 py-1 rounded-xl border border-solid border-slate-200 dark:border-slate-800">
-                <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={pointsPerQuestion}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val > 0) {
-                      handleUpdatePoints(val);
-                    }
-                  }}
-                  className="w-12 bg-transparent text-center text-xs font-black text-slate-800 dark:text-white outline-none"
-                />
-                <span className="text-[10px] font-bold text-slate-400">ពិន្ទុ</span>
-              </div>
-            </div>
+        {/* Live connections badge */}
+        <div className="flex items-center gap-3">
+          <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border ${
+            isDarkMode 
+              ? 'bg-slate-900 border-indigo-950/60 text-slate-400' 
+              : 'bg-white border-slate-200 text-slate-650 text-slate-600 shadow-xs'
+          }`}>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>ម៉ាស៊ីេនមេ Live (Online Server)</span>
           </div>
         </div>
       </div>
 
-      {/* Upper Information Deck */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch mb-6">
-        {/* Connection QR Instructions Box */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 border-2 border-dashed border-indigo-200 dark:border-indigo-950/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-between text-center relative overflow-hidden shadow-sm">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -mr-10 -mt-10" />
-          
-          <div className="w-full flex items-center justify-center gap-2 mb-3">
-            <Smartphone className="w-6 h-6 text-indigo-500 animate-bounce" />
-            <span className="text-sm font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">បន្ទប់ឆ្លើយតប Live (Live Interaction Board)</span>
-          </div>
-
-          {/* Cambodian Advisory callouts to handle Google Cloud Run Sandbox 404/403 errors */}
-          {window.location.origin.includes('ais-dev-') && (
-            <div className="w-full text-left bg-rose-50 dark:bg-rose-950/40 border-2 border-solid border-rose-200 dark:border-rose-900 p-4 rounded-2xl mb-4 text-xs leading-relaxed text-rose-800 dark:text-rose-300 shadow-sm animate-pulse">
-              <p className="font-black flex items-center gap-1.5 mb-1 text-[13px]">
-                ⚠️ ការព្រមានអំពីការតភ្ជាប់ (Connection Warning):
-              </p>
-              <p className="font-semibold text-[11px]">
-                អ្នកកំពុងបើកបន្ទប់នៅលើ <strong className="underline">ប្រព័ន្ធអភិវឌ្ឍន៍ឯកជន (Developer Sandbox - ais-dev)</strong>។ ប្រសិនបើសិស្សស្កេន QR នេះជាមួយទូរស័ព្ទដៃ វានឹង <strong className="text-rose-600 font-bold">បង្ហាញកំហុស 403 (មិនអនុញ្ញាត)</strong> ព្រោះវាជាប្រព័ន្ធសម្ងាត់របស់អ្នកបង្កើត!
-              </p>
-              <p className="mt-1.5 font-semibold text-[11px]">
-                👉 <strong className="text-indigo-700 dark:text-indigo-300">ដំណោះស្រាយ៖</strong> បើកបន្ទប់លេងជាមួយប៊ូតុង "តំណភ្ជាប់សាធារណៈ (សិស្សលេង)" ឬប្តូរទូរស័ព្ទដើម្បីធ្វើតេស្ត。
-              </p>
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 relative z-10">
+        {/* Left Panel: Access & QR Code Box (StudyPlay Host Frame) - Styled dynamically for light and dark modes */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          <div className={`${
+            isDarkMode 
+              ? 'bg-gradient-to-br from-[#121829] to-[#0d1222] border-2 border-indigo-950/85 shadow-[0_8px_30px_rgb(0,0,0,0.3)]' 
+              : 'bg-white border-2 border-slate-100 shadow-xl'
+          } rounded-[2.5rem] p-8 relative overflow-hidden flex flex-col items-center justify-center text-center flex-1 min-h-[500px]`}>
+            <div className={`absolute top-0 right-0 w-32 h-32 ${
+              isDarkMode ? 'bg-indigo-500/5' : 'bg-indigo-50/50'
+            } rounded-full -mr-16 -mt-16 pointer-events-none`} />
+            
+            <div className="w-full flex items-center justify-center gap-2 mb-2">
+              <Smartphone className={`w-5 h-5 animate-bounce ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+              <span className={`text-xs font-black uppercase tracking-wider ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>ស្កែន QR ឬបញ្ចូលលេខកូដដើម្បីចូលលេង</span>
             </div>
-          )}
 
-          {/* QR Code & Instruction Lists inside flex-row layout */}
-          <div className="w-full flex flex-col sm:flex-row items-center gap-6 mt-2">
-            {/* Displaying actual QR Code */}
-            <div className="p-3 bg-white dark:bg-slate-955 rounded-2xl border border-solid border-slate-200 dark:border-slate-800 shadow-inner flex-shrink-0 animate-in zoom-in duration-300">
+            <h2 className={`text-2xl font-black tracking-tight mb-1 flex items-center gap-2 justify-center ${
+              isDarkMode ? 'text-white' : 'text-slate-900'
+            }`}>
+              <span>ចូលរួមលេងជាមួយ PIN</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider animate-pulse ${
+                isDarkMode 
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' 
+                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+              }`}>Classic</span>
+            </h2>
+
+            <p className={`text-[11.5px] max-w-sm mb-5 font-bold leading-relaxed ${
+              isDarkMode ? 'text-slate-400' : 'text-slate-600'
+            }`}>
+              សិស្សប្រើប្រាស់ទូរស័ព្ទដៃស្កេន QR Code ខាងក្រោម ដើម្បីចុះឈ្មោះ និងចូលរួមលេងហ្គេមឆ្លើយសំណួរផ្ដាច់មុខរបស់ StudyPlay ភ្លាមៗ!
+            </p>
+
+            {/* Unique Game PIN Block - Elegant Dynamic design */}
+            <div className={`w-full p-5 rounded-3xl mb-5 text-center relative overflow-hidden group ${
+              isDarkMode ? 'bg-slate-950/60 border border-indigo-950/80' : 'bg-slate-50 border border-slate-200/80'
+            }`}>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-indigo-500/5 rounded-full blur-xl pointer-events-none" />
+              
+              <span className={`text-[10.5px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 mb-1.5 z-10 relative ${
+                isDarkMode ? 'text-indigo-400/90' : 'text-indigo-600/90'
+              }`}>
+                <Crown className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                លេខកូដសម្គាល់បន្ទប់ (GAME PIN)
+              </span>
+              <div className={`text-5xl font-black font-sans tracking-[0.2em] select-all z-10 relative pl-[0.2em] ${
+                isDarkMode 
+                  ? 'text-amber-400 drop-shadow-[0_4px_12px_rgba(245,158,11,0.25)]' 
+                  : 'text-slate-900 drop-shadow-[0_2px_4px_rgba(0,0,0,0.04)]'
+              }`}>
+                {(activeRoomId || 'default').substring(0, 8).toUpperCase()}
+              </div>
+            </div>
+
+            {/* Dynamic QR Code Frame - Styled cleanly for dark or light backgrounds */}
+            <div className={`p-4 rounded-[2rem] shadow-md shrink-0 flex flex-col items-center gap-2 group hover:scale-[1.02] transition-all duration-300 relative ${
+              isDarkMode ? 'bg-slate-950 border border-indigo-950' : 'bg-slate-50 border border-slate-200/80'
+            }`}>
               <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(studentJoinLink)}`}
-                alt="QR Code"
-                className="w-28 h-28 sm:w-32 sm:h-32 object-contain"
-                referrerPolicy="no-referrer"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(studentJoinLink)}`}
+                alt="QR Code For Joining" 
+                className="w-36 h-36 object-contain rounded-xl select-none z-10 relative"
               />
+              <span className={`text-[9.5px] font-black tracking-wider uppercase flex items-center gap-1.5 z-10 relative ${
+                isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
+              }`}>
+                <QrCode className={`w-3.5 h-3.5 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'} animate-pulse`} />
+                ស្កេនរូបដើម្បីចូលរួម (Scan QR)
+              </span>
             </div>
 
-            {/* Instruction Lists */}
-            <div className="text-left space-y-3 flex-1 max-w-sm">
-              {/* Game PIN Display */}
-              <div className="flex flex-col items-stretch self-stretch bg-indigo-50/40 dark:bg-indigo-950/25 p-3 px-4 rounded-3xl border border-solid border-indigo-150/40 dark:border-indigo-900/40">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">លេខសម្គាល់បន្ទប់ (Game PIN)</span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black tracking-wide uppercase">Active Cloud</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-3xl font-black font-mono tracking-widest text-indigo-600 dark:text-indigo-400 select-all">
-                    {generateGamePIN(teacher?.id || 'local', activeClassId)}
-                  </span>
-                </div>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1">សិស្សអាចគ្រាន់តែវាយលេខកូដនេះនៅលើទូរស័ព្ទដើម្បីចូលលេង!</span>
-              </div>
-
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">1</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">បើកកាមេរ៉ាទូរស័ព្ទ រួចស្កេនរូប QR Code ឬបើក Link ខាងក្រោម。</p>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">2</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">វាយបញ្ចូលឈ្មោះរបស់អ្នក (ជាអក្សរខ្មែរ) រួចជ្រើសរើស Emoji តំណាង。</p>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">3</span>
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">រង់ចាំលោកគ្រូអនុញ្ញាតឱ្យសិស្សចូលលេង ឬអនុញ្ញាតស្វ័យប្រវត្តិ!</p>
-              </div>
-            </div>
-          </div>
-
-                    {/* Joining Link Output */}
-          <div className="w-full flex items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-955 rounded-2xl border border-slate-200 dark:border-slate-800 mt-2">
-            <input 
-              type="text" 
-              readOnly 
-              value={studentJoinLink}
-              className="flex-1 bg-transparent border-none text-xs text-slate-500 dark:text-slate-400 px-3 outline-none select-all truncate font-mono font-semibold"
-            />
+            {/* Quick Share Link - Minimal and elegant copy-trigger */}
             <button
               onClick={handleCopyLink}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0 border-none select-none ${
+              className={`mt-4 px-4 py-2 border transition-all flex items-center gap-1.5 cursor-pointer shrink-0 select-none rounded-[14px] text-[10.5px] font-black ${
                 copied 
-                  ? 'bg-emerald-500 text-white shadow-md' 
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  ? isDarkMode
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-900 shadow-sm' 
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-250 shadow-sm'
+                  : isDarkMode
+                    ? 'bg-indigo-950/80 text-indigo-300 hover:text-white hover:bg-indigo-900/60 border-indigo-900/50'
+                    : 'bg-indigo-50 text-indigo-700 hover:text-indigo-800 hover:bg-indigo-100/70 border-indigo-100/60'
               }`}
             >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? "ចម្លងរួច!" : "ចម្លងពាក្យចំណង"}</span>
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              <span>{copied ? "ចម្លងតំណភ្ជាប់ជោគជ័យ!" : "ចម្លងតំណភ្ជាប់ចូលរួម (Copy Link)"}</span>
             </button>
           </div>
         </div>
 
-        {/* Action Controls & Realtime Statistics Card */}
-        <div className="lg:col-span-5 flex flex-col gap-4">
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-950 text-white rounded-[2rem] p-6 flex flex-col justify-between flex-1 border border-indigo-950 shadow-lg relative overflow-hidden text-left font-sans">
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-500/10 rounded-full animate-pulse" />
+        {/* Right Panel: Joined Members & Action Deck (Classic StudyPlay Layout) */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* Quick Stats & Core Controls Frame */}
+          <div className={`border rounded-[2.5rem] p-6 relative overflow-hidden flex flex-col justify-between shrink-0 transition-all duration-300 ${
+            isDarkMode 
+              ? 'bg-gradient-to-br from-[#121829] to-[#0a0e1a] border-indigo-950/80' 
+              : 'bg-white border-slate-200/80 shadow-sm'
+          }`}>
+            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-500/5 rounded-full animate-pulse pointer-events-none" />
             
-            <div className="flex justify-between items-start">
+            <div className={`flex justify-between items-center pb-4 border-b ${
+              isDarkMode ? 'border-indigo-950/50' : 'border-slate-100'
+            }`}>
               <div>
-                <h3 className="text-xs text-indigo-300 font-black tracking-widest uppercase">អ្នកចូលរួមសរុប (Roster)</h3>
-                <h2 className="text-4xl font-black font-mono tracking-tight text-white mt-1">
-                  {approvedStudents.length} <span className="text-xs font-semibold text-indigo-300">នាក់ (Players)</span>
+                <h3 className={`text-[10px] font-extrabold tracking-widest uppercase mb-1 ${
+                  isDarkMode ? 'text-indigo-400' : 'text-indigo-650'
+                }`}>ស្ថានភាពបន្ទប់ហ្គេម (GAME STATISTICS)</h3>
+                <h2 className={`text-3xl font-black font-sans tracking-tight mt-1 flex items-baseline gap-2 ${
+                  isDarkMode ? 'text-white' : 'text-slate-900'
+                }`}>
+                  {approvedStudents.length} 
+                  <span className={`text-xs font-semibold ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>នាក់បានចូលរួម (Connected)</span>
                 </h2>
               </div>
-              <div className="w-10 h-10 bg-indigo-500/20 text-indigo-300 rounded-xl flex items-center justify-center animate-pulse border border-indigo-500/30">
-                <Users className="w-5 h-5" />
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center animate-pulse border ${
+                isDarkMode 
+                  ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' 
+                  : 'bg-indigo-50 text-indigo-600 border-indigo-200'
+              }`}>
+                <Users className={`w-5 h-5 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-505'}`} />
               </div>
             </div>
 
-            <div className="space-y-4 my-6">
-              <div className="flex items-center justify-between text-xs py-1.5 border-b border-indigo-900/40">
-                <span className="text-slate-400 font-semibold">សកម្មភាពឆ្លើយតប Live៖</span>
+            <div className={`grid grid-cols-2 gap-4 my-5 p-4 rounded-2xl text-xs font-semibold border ${
+              isDarkMode 
+                ? 'bg-slate-950/30 border-indigo-950/55 text-slate-300' 
+                : 'bg-slate-50 border-slate-200/80 text-slate-750 text-slate-700'
+            }`}>
+              <div className="space-y-1">
+                <span className="text-slate-400 block text-[10px] uppercase font-black">សកម្មភាពម៉ាស៊ីនបន្តផ្ទាល់</span>
                 {isUsingSimulatedPlayers ? (
-                  <span className="text-emerald-400 font-black flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse shrink-0" />
-                    សិស្ស 5 នាក់បានភ្ជាប់លេង! (5 students connected to play!)
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse shrink-0" />
+                    របៀបសាកល្បង (Sim Mode Live)
                   </span>
                 ) : (
                   <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block shrink-0" />
-                    កំពុងរង់ចាំសិស្ស
+                    កំពុងរង់ចាំសិស្សពិត
                   </span>
                 )}
               </div>
-              <div className="flex items-center justify-between text-xs py-1.5 border-b border-indigo-900/40">
-                <span className="text-slate-400 font-semibold">សន្លឹកសំណួរកំពុងបង្ហាញ៖</span>
-                <span className="text-slate-300 font-bold">
-                  {activeCardId ? `សំណួរលេខ ${cards.find(c => c.id === activeCardId)?.number || ''}` : 'គ្មានទេ (None)'}
+              <div className="space-y-1">
+                <span className="text-slate-400 block text-[10px] uppercase font-black">សន្លឹកសំណួរក្នុងមេរៀន</span>
+                <span className="text-indigo-300 font-bold flex items-center gap-1.5">
+                  📚 {cards.filter(c => c.question).length} Quiz Cards
                 </span>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2.5 w-full mt-auto relative group">
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
               <button
                 type="button"
                 onClick={handleStartGameFirst}
                 disabled={cards.filter(c => c.question).length === 0}
-                className="w-full flex items-center justify-center gap-2 py-3 px-5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs rounded-xl shadow-xl transition-all cursor-pointer active:scale-95 text-center border-none"
-                title="Google AI Studio - AI Support: Simulated Players Activated. Proceed with Quiz."
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm rounded-2xl shadow-lg transition-all cursor-pointer active:scale-95 text-center border-none select-none text-center"
               >
                 <Play className="w-4 h-4 text-white animate-pulse" />
-                <span>ចាប់ផ្ដើមលេងសំណួរ Live 🚀 (Start Live Quiz)</span>
+                <span>ចាប់ផ្ដើមលេងសំណួរ Live 🚀 (Start Session)</span>
               </button>
-
-              {/* Advanced sleek tooltip overlay */}
-              <div className="hidden group-hover:flex absolute bottom-[110%] left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-900 border border-slate-700 text-white text-[10px] rounded-xl shadow-2xl z-50 flex-col items-center gap-1 text-center font-medium pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-                <span className="font-black text-amber-400">🤖 AI SUPPORT NOTICE</span>
-                <p className="text-slate-300">Google AI Studio - AI Support: Simulated Players Activated. Proceed with Quiz.</p>
-                <div className="w-2.5 h-2.5 bg-slate-900 border-r border-b border-slate-700 rotate-45 mt-[-5px] absolute bottom-[-5px] left-1/2 -translate-x-1/2" />
-              </div>
-
-              {isUsingSimulatedPlayers && (
-                <div className="text-[10px] text-indigo-200 bg-black/40 border border-indigo-500/30 px-3 py-2.5 rounded-xl text-center leading-normal flex items-center justify-center gap-1.5 shadow-inner mt-1">
-                  <span className="text-xs">🤖</span>
-                  <p className="font-semibold text-left">
-                    <span className="font-black text-indigo-400 uppercase tracking-wide">Google AI Studio - AI Support:</span> Simulated Players Activated. Proceed with Quiz.
-                  </p>
-                </div>
-              )}
 
               <button
                 type="button"
                 onClick={handleStartReveal}
-                className="w-full flex items-center justify-center gap-2 py-3 px-5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md cursor-pointer active:scale-95 transition-all text-center border-none"
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 px-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm rounded-2xl shadow-lg cursor-pointer active:scale-95 transition-all text-center border-none select-none text-center"
               >
                 <Trophy className="w-4 h-4 text-slate-950 animate-bounce" />
                 <span>🏆 បង្ហាញម្ចាស់ជ័យលាភី (Show Podium)</span>
               </button>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Student Approval & Instant Entry Control Desk */}
-      <div className="mb-6 p-6 bg-slate-50 dark:bg-slate-900/40 border-2 border-solid border-slate-200 dark:border-slate-800 rounded-[2.5rem] flex flex-col animate-in fade-in duration-300 text-left">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 mb-4 gap-4 border-b border-solid border-slate-200/60 dark:border-slate-850">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl border border-indigo-100 dark:border-indigo-900 text-indigo-650 dark:text-indigo-400 shrink-0">
-              <UserCheck className="w-5 h-5 flex items-center justify-center" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
-                <span>កន្លែងអនុញ្ញាតឱ្យសិស្សចូលលេង 🧑‍🏫</span>
-                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/80 text-indigo-650 dark:text-indigo-400 font-extrabold px-2 py-0.5 rounded-full select-none uppercase tracking-wider">
-                  Approval Center
-                </span>
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold mt-0.5">
-                ពិនិត្យ និងអនុញ្ញាតសិស្សដែលបានស្កេន QR Code ចុះឈ្មោះចូលរួមលេងក្នុងថ្នាក់រៀន
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Auto-Approve Setting Toggle */}
-          <div className="flex items-center gap-3 bg-white dark:bg-slate-955 px-4 py-2 rounded-2xl border border-solid border-slate-200 dark:border-slate-850 shadow-sm shrink-0">
-            <div className="text-left">
-              <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">របៀបចុះឈ្មោះចូល (Join Style)</p>
-              <p className="text-xs font-bold text-slate-705 dark:text-slate-350">
-                {autoApprove ? '⚡ អនុញ្ញាតស្វ័យប្រវត្តិ (Auto)' : '🔒 គ្រូយល់ព្រមផ្ទាល់ (Manual)'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleToggleAutoApprove}
-              className={`w-12 h-6.5 rounded-full transition-colors relative cursor-pointer outline-none border-none ${
-                autoApprove ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-800'
-              }`}
-              title="ចុចដើម្បីប្តូររបៀបឆ្លងកាត់ស្វ័យប្រវត្តិ"
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white absolute top-0.75 shadow transition-transform ${
-                  autoApprove ? 'right-1' : 'left-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Requests List */}
-        {pendingApprovalStudents.length > 0 ? (
-          <div className="space-y-3.5">
-            <div className="flex justify-between items-center bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 p-3 rounded-2xl text-[11px] leading-relaxed text-amber-850 dark:text-amber-305">
-              <span className="font-bold">
-                ⚠️ ចំនួន <strong className="text-[13px]">{pendingApprovalStudents.length} នាក់</strong> កំពុងរង់ចាំអ្នកគ្រូចុចអនុញ្ញាតចូលលេង៖
-              </span>
-              <button
-                type="button"
-                onClick={handleApproveAllStudents}
-                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-[10px] rounded-xl cursor-pointer select-none border-none shadow-sm transition-all text-center uppercase tracking-wider"
-              >
-                យល់ព្រមទាំងអស់ (Approve All)
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 max-h-[180px] overflow-y-auto custom-scrollbar p-1">
-              {pendingApprovalStudents.map(student => (
-                <div
-                  key={student.id}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-205 dark:border-slate-850 rounded-2xl shadow-sm hover:scale-[1.01] transition-all"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-2xl select-none animate-pulse">{student.emoji || "🧑‍🎓"}</span>
-                    <p className="text-xs font-black truncate text-slate-800 dark:text-slate-200">{student.name}</p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                    <button
-                      type="button"
-                      onClick={() => handleApproveStudent(student.id)}
-                      className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md active:scale-90"
-                      title="អនុញ្ញាត (Approve)"
-                    >
-                      <Check className="w-4 h-4 text-white" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeclineStudent(student.id)}
-                      className="w-7 h-7 bg-red-650 hover:bg-red-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none shadow-md active:scale-90"
-                      title="បដិសេធ (Decline)"
-                    >
-                      <XCircle className="w-4 h-4 text-white" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="py-6 text-center text-slate-400 dark:text-slate-500 font-bold text-xs flex flex-col items-center justify-center gap-2.5 rounded-2xl bg-white dark:bg-slate-955 p-4 border border-dashed border-slate-200/80 dark:border-slate-800">
-            <div className="relative">
-              <div className="w-10 h-10 bg-indigo-500/5 rounded-full flex items-center justify-center text-xl animate-pulse">
-                ⏳
-              </div>
-              <span className="absolute inset-0 border-2 border-indigo-400/25 rounded-full animate-ping pointer-events-none" />
-            </div>
-            <div className="max-w-md space-y-1">
-              <p className="text-slate-700 dark:text-slate-350 font-black">មិនទាន់មានសិស្សរង់ចាំការអនុញ្ញាតឡើយ (No Pending Requests)</p>
-              <p className="text-[10px] text-slate-450 dark:text-slate-500 leading-normal max-w-sm mx-auto">
-                នៅពេលសិស្សស្កេនរូបភាព QR ខាងលើ រួចវាយបញ្ចូលកម្រងឈ្មោះគណនីបណ្តោះអាសន្ន ពួកគេនឹងលោតបង្ហាញនៅទីនេះភា្លមៗ សម្រាប់ឱ្យអ្នកគ្រូចុចអនុញ្ញាតឱ្យសិស្សចូលលេង។
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Roster of Online Students */}
-      <div className="flex-1 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800/80 p-6 flex flex-col min-h-[300px]">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-4 gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
-            <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">សិស្សដែលបានចុះឈ្មោះលេងភ្លាមៗ (Connected Student Roster)</h3>
-          </div>
-          <span className="self-start sm:self-auto text-[10px] font-black text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950 px-2.5 py-1 rounded-full border border-slate-200/50 dark:border-slate-805">
-            ចំនួន {approvedStudents.length} នាក់
-          </span>
-        </div>
-
-        {/* Admin Roster Actions Deck */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-850 mb-4 text-left">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                setShowBulkForm(false);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-900 text-xs font-black rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 cursor-pointer transition-all shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>បញ្ចូលម្នាក់ៗ (Add Individual)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowBulkForm(!showBulkForm);
-                setShowAddForm(false);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-900 text-xs font-black rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 cursor-pointer transition-all shrink-0"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>បញ្ចូលម្ដងច្រើននាក់ (Add Bulk)</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleLoadSimulated}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900 text-[10px] font-black rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 cursor-pointer transition-all shrink-0 uppercase tracking-wider"
-              title="បញ្ចូលសិស្សនិម្មិតទាំង ៥ នាក់"
-            >
-              🤖 បញ្ចូលសិស្សនិម្មិត ៥ នាក់
-            </button>
-            <button
-              type="button"
-              onClick={handleClearSimulated}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 dark:bg-red-950/35 text-red-650 dark:text-red-400 border border-red-200/40 dark:border-red-900 text-[10px] font-black rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 cursor-pointer transition-all shrink-0 uppercase tracking-wider"
-              title="សម្អាត ឬដកសិស្សនិម្មិតចេញ"
-            >
-              🗑️ ដកសិស្សនិម្មិតចេញ
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Individual Addition Form */}
-        {showAddForm && (
-          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 mb-4 animate-in slide-in-from-top duration-200 text-left space-y-3">
-            <h4 className="text-xs font-black text-slate-700 dark:text-slate-300">បញ្ចូលសិស្សថ្មីម្នាក់៖</h4>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                placeholder="វាយបញ្ចូលឈ្មោះសិស្ស..."
-                value={manualNameInput}
-                onChange={(e) => setManualNameInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && manualNameInput.trim()) {
-                    handleAddManualStudent(manualNameInput, manualEmojiInput);
-                  }
-                }}
-                className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500 shrink-0">រូបតំណាង៖</span>
-                <select
-                  value={manualEmojiInput}
-                  onChange={(e) => setManualEmojiInput(e.target.value)}
-                  className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-xs outline-none cursor-pointer"
-                >
-                  {["🧑‍🎓", "🦊", "🦁", "🐼", "🦄", "👑", "🚀", "⚡", "🔥", "⚽", "⭐", "🎉", "👾", "🐻", "🐝", "🐙", "💎", "🎯"].map(em => (
-                    <option key={em} value={em}>{em}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => handleAddManualStudent(manualNameInput, manualEmojiInput)}
-                  disabled={!manualNameInput.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xs rounded-xl cursor-pointer select-none border-none shrink-0"
-                >
-                  យល់ព្រមបន្ថែម
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Dynamic Bulk Addition Form */}
-        {showBulkForm && (
-          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 mb-4 animate-in slide-in-from-top duration-200 text-left space-y-3">
-            <h4 className="text-xs font-black text-slate-700 dark:text-slate-300">បញ្ចូលឈ្មោះសិស្សជាក្រុម (កាត់ដោយសញ្ញាក្បៀស ឬចុះបន្ទាត់)៖</h4>
-            <textarea
-              placeholder="ឧទហរណ៍៖ សុខា, ធារ៉ា, វិបុល, ពិសិដ្ឋ..."
-              value={bulkNamesInput}
-              onChange={(e) => setBulkNamesInput(e.target.value)}
-              rows={3}
-              className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => handleAddBulkStudents(bulkNamesInput)}
-                disabled={!bulkNamesInput.trim()}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xs rounded-xl cursor-pointer select-none border-none"
-              >
-                យល់ព្រមបន្ថែមទាំងអស់
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto max-h-[300px] custom-scrollbar">
-          {approvedStudents.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-1">
-              {sortedStudents.map((student, sIdx) => {
-                const colors = [
-                  'from-emerald-500/5 to-emerald-500/10 border-emerald-200 hover:bg-emerald-500/15 text-emerald-950 dark:text-emerald-100',
-                  'from-indigo-500/5 to-indigo-500/10 border-indigo-200 hover:bg-indigo-500/15 text-indigo-950 dark:text-indigo-100',
-                  'from-amber-500/5 to-amber-500/10 border-amber-200 hover:bg-amber-500/15 text-amber-950 dark:text-amber-100',
-                  'from-pink-500/5 to-pink-500/10 border-pink-200 hover:bg-pink-500/15 text-pink-950 dark:text-pink-100',
-                  'from-teal-500/5 to-teal-500/10 border-teal-200 hover:bg-teal-500/15 text-teal-950 dark:text-teal-100'
-                ];
-                const gridColor = colors[sIdx % colors.length];
-                const isEditing = editingStudentId === student.id;
-
-                return (
-                  <div 
-                    key={student.id || sIdx}
-                    className={`group/card flex items-center justify-between gap-2.5 p-3 rounded-2xl border border-solid bg-gradient-to-br transition-all hover:scale-102 hover:shadow-sm ${gridColor}`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <span className="text-2xl select-none shrink-0">{student.emoji || "🧑‍🎓"}</span>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1 min-w-0 flex-1">
-                          <input
-                            type="text"
-                            value={editingNameValue}
-                            onChange={(e) => setEditingNameValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleEditStudent(student.id, editingNameValue);
-                              }
-                            }}
-                            className="w-full px-1.5 py-1 bg-white dark:bg-slate-900 text-xs font-extrabold rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleEditStudent(student.id, editingNameValue)}
-                            className="p-1 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-950 rounded cursor-pointer border-none"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="min-w-0 flex-1 text-left">
-                          <p className="text-xs font-black truncate leading-tight text-slate-800 dark:text-white">{student.name}</p>
-                          <p className="text-[10px] font-mono font-black mt-0.5 text-slate-400 flex items-center gap-1 leading-none">
-                            <span>{student.score} ពិន្ទុ</span>
-                            {sIdx === 0 ? (
-                              <span className="text-[9px] text-amber-500">👑 លេខ១</span>
-                            ) : sIdx < 5 ? (
-                              <span className="text-[9px] text-slate-500">⭐ top {sIdx + 1}</span>
-                            ) : null}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {!isEditing && (
-                      <div className="flex items-center gap-1 shrink-0 bg-transparent opacity-0 group-hover/card:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingStudentId(student.id);
-                            setEditingNameValue(student.name);
-                          }}
-                          className="p-1 bg-white hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-indigo-650 dark:text-indigo-400 rounded-lg flex items-center justify-center cursor-pointer border border-solid border-indigo-100/50"
-                          title="កែសម្រួលឈ្មោះ (Edit Name)"
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStudent(student.id)}
-                          className="p-1 bg-white hover:bg-red-50 dark:bg-red-950/30 dark:hover:bg-red-950 text-red-500 rounded-lg flex items-center justify-center cursor-pointer border border-solid border-red-100/50"
-                          title="ដកចេញ (Delete Student)"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400 dark:text-slate-500">
-              <RefreshCw className="w-10 h-10 animate-spin text-indigo-400 mb-3" />
-              <p className="text-xs font-black">មិនទាន់មានសិស្សភ្ជាប់លេងនៅឡើយទេ...</p>
-              <p className="text-[10px] text-slate-500 mt-1 max-w-sm">សូមឲ្យសិស្សស្កេនរូប QR Code ខាងលើដើម្បីចាប់ផ្ដើមធ្វើសំណួរចម្លើយទទួលបានពិន្ទុ!</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Real-time Student Stress Relief & Relaxation Supervision Dashboard (3 figures on top) */}
-      <div className="bg-slate-900 border border-slate-800/80 rounded-[2rem] p-6 shadow-2xl mt-6 flex flex-col text-left text-white relative overflow-hidden">
-        {/* Decorative background aura */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-80 h-80 bg-teal-500/5 rounded-full blur-[100px] pointer-events-none" />
-
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 mb-5 border-b border-slate-800 gap-4 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
-              <Tv className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                <span>ផ្ទាំងគ្រប់គ្រងសកម្មភាពលំហែកាយសិស្ស 🎮</span>
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-extrabold px-2.5 py-0.5 rounded-full">
-                  Realtime Game Supervision
-                </span>
-              </h3>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">
-                តាមដានសកម្មភាពលេងហ្គេមកាត់បន្ថយភាពតានតឹងរបស់សិស្សក្នុងថ្នាក់ (Emoji Pop, Music Pad, Stress Smasher)
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleTriggerCelebration}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-indigo-650 hover:from-teal-600 hover:to-indigo-750 text-white font-black text-xs rounded-xl shadow-lg hover:shadow-indigo-600/10 transition-all cursor-pointer active:scale-95 border-none"
-          >
-            <Sparkles className="w-4 h-4 animate-bounce" />
-            <span>បាញ់កាំជ្រួចចែកក្តីរីករាយ 🎈 (Trigger Class Celebration)</span>
-          </button>
-        </div>
-
-        {/* 3 Panels Row as requested */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
-          {/* Panel 1: Team Stress Crusher Progress (Cooperative Goal) */}
-          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[9px] font-black uppercase text-indigo-400 tracking-wider">របារសរុបសកម្មភាព (Collective progress)</span>
-                <h4 className="text-sm font-black text-white mt-1">ចំនួនបំបាត់ភាពតានតឹងសរុប 🔨</h4>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-lg">គ្រូ ១</span>
-            </div>
-
-            <div className="my-4 text-center">
-              {(() => {
-                const totalSmashed = approvedStudents.reduce((sum, s) => sum + (s.stressSmashed || 0), 0);
-                const target = 200; // Target points to fill the gauge
-                const percent = Math.min(100, Math.floor((totalSmashed / target) * 100));
-                return (
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-end">
-                      <span className="text-xs text-slate-400 font-semibold">កម្រិតធូរស្បើយក្នុងថ្នាក់ (Relaxed State)</span>
-                      <span className="text-sm font-black text-teal-450 font-mono">{totalSmashed} / {target} spts</span>
-                    </div>
-                    {/* Visual Bar with gradient */}
-                    <div className="w-full h-5 bg-slate-900 rounded-full border border-slate-800 overflow-hidden p-0.5">
-                      <div 
-                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-teal-400 to-emerald-500 transition-all duration-550 relative"
-                        style={{ width: `${percent}%` }}
-                      >
-                        {percent > 15 && (
-                          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-950 leading-none">
-                            {percent}% លំហែកាយ
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-500 font-semibold leading-normal">
-                      សិស្សលេងហ្គេមកាន់តែច្រើន របារលំហែកាយកាន់តែពេញ! នៅពេលពេញ លោកគ្រូ-អ្នកគ្រូអាចចុចប៊ូតុងខាងលើដើម្បីបាញ់កាំជ្រួចអបអរ។
+          {/* Pending Approval Join Requests Container */}
+          {pendingApprovalStudents.length > 0 && (
+            <div className="p-5 bg-amber-550/10 bg-amber-500/5 border-2 border-dashed border-amber-500/30 rounded-3xl flex flex-col animate-in fade-in duration-300 shrink-0">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 mb-3 border-b border-amber-500/25 gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
+                  <div>
+                    <h3 className="text-xs font-black text-amber-400">សិស្សរង់ចាំការអនុញ្ញាត ({pendingApprovalStudents.length} នាក់)</h3>
+                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                      សិស្សកំពុងរង់ចាំការអនុញ្ញាតដើម្បីចូលរួមឆ្លើយសំណួរយកពិន្ទុ
                     </p>
                   </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Panel 2: Live Collective Harmony Broadcaster (Synthesized Sound Display) */}
-          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
-            <div className="flex items-start justify-between pb-2 border-b border-slate-850">
-              <div>
-                <span className="text-[9px] font-black uppercase text-pink-400 tracking-wider">ប្រព័ន្ធសំឡេងរួមគ្នា (Class Harmony Sky)</span>
-                <h4 className="text-sm font-black text-white mt-1">ផ្ទាំងសំឡេងរួមគ្នាលំហែកាយ 🎹</h4>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 bg-pink-500/10 text-pink-400 rounded-lg">គ្រូ ២</span>
-            </div>
-
-            {/* Simulated soundboard box displaying sparkle star tags in real-time when student taps music notes! */}
-            <div className="flex-1 my-3 bg-slate-950 rounded-xl relative border border-slate-900 overflow-hidden flex flex-col items-center justify-center min-h-[160px] max-h-[160px]">
-              {activeStarNotes.length === 0 ? (
-                <div className="text-center p-3 text-slate-600 space-y-1">
-                  <Volume2 className="w-6 h-6 mx-auto opacity-40 text-indigo-400" />
-                  <p className="text-[10px] font-bold">រង់ចាំស្តាប់ការលេងកំណត់សំគាល់តន្ត្រី...</p>
-                  <p className="text-[9px] text-slate-705 font-semibold">(Student note taps will float up here live!)</p>
                 </div>
-              ) : (
-                <div className="absolute inset-0">
-                  {activeStarNotes.map(star => (
-                    <div
-                      key={star.id}
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-indigo-500/20 hover:scale-105 border border-indigo-400/40 rounded-full py-1 px-2.5 flex items-center gap-1 shadow-lg shadow-indigo-500/10 transition-all pointer-events-none"
-                      style={{ left: `${star.x}%`, top: `${star.y}%` }}
-                    >
-                      <span className="text-base select-none">{star.emoji}</span>
-                      <span className="text-[9px] font-bold text-indigo-250 truncate max-w-[60px]">{star.studentName}</span>
-                      <span className="text-[8px] bg-indigo-600 text-white font-mono font-black px-1 rounded">{star.note}</span>
+                
+                <button
+                  type="button"
+                  onClick={handleApproveAllStudents}
+                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] rounded-xl transition-all cursor-pointer select-none active:scale-95 border-none shadow-md shadow-amber-500/15"
+                >
+                  អនុញ្ញាតទាំងអស់ (Approve All)
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[140px] overflow-y-auto custom-scrollbar p-1">
+                {pendingApprovalStudents.map(student => (
+                  <div
+                    key={student.id}
+                    className="flex items-center justify-between p-2.5 bg-slate-950/65 border border-indigo-950/50 rounded-2xl shadow-sm"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xl select-none">{student.emoji || "🧑‍🎓"}</span>
+                      <p className="text-[11px] font-black truncate text-slate-200">{student.name}</p>
                     </div>
-                  ))}
-                  {/* Background particle sparklers */}
-                  <div className="absolute inset-x-0 bottom-1 py-1 text-center select-none pointer-events-none z-10">
-                    <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 px-2 py-0.5 rounded-full font-bold">
-                      🎼 ថ្នាក់រៀនកំពុងលេងភ្លេងរួមគ្នា
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Panel 3: Live Relaxation Event Log Logger */}
-          <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between relative min-h-[280px]">
-            <div className="flex items-start justify-between pb-2 border-b border-slate-850">
-              <div>
-                <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider">សកម្មភាពថ្មីៗ (Live Event Ticker)</span>
-                <h4 className="text-sm font-black text-white mt-1">ព្រឹត្តិការណ៍បំបាត់ភាពតានតឹង 🔨</h4>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-405 rounded-lg">គ្រូ ៣</span>
-            </div>
-
-            <div className="flex-1 my-3 overflow-y-auto max-h-[160px] min-h-[160px] custom-scrollbar text-xs font-sans space-y-2 text-left self-stretch">
-              {activityLogs.length === 0 ? (
-                <div className="text-center py-8 text-slate-600 font-bold text-[10px]">
-                  មិនទាន់មានសកម្មភាពលំហែកាយនៅឡើយទេ...
-                </div>
-              ) : (
-                activityLogs.map((log) => (
-                  <div key={log.id} className="flex items-center gap-2 p-1 border-b border-slate-850 hover:bg-slate-900/40 rounded transition-all">
-                    <span className="text-sm select-none shrink-0">{log.emoji}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] leading-tight text-slate-350">
-                        <strong className="text-white font-black">{log.name}</strong> {log.text}
-                      </p>
-                      <p className="text-[8px] text-slate-600 font-bold mt-0.5">
-                        {new Date(log.time).toLocaleTimeString()}
-                      </p>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveStudent(student.id)}
+                        className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none"
+                        title="អនុញ្ញាត (Approve)"
+                      >
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeclineStudent(student.id)}
+                        className="w-7 h-7 bg-red-650 hover:bg-red-700 text-white rounded-lg flex items-center justify-center cursor-pointer transition-all border-none"
+                        title="បដិសេធ (Decline)"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-white" />
+                      </button>
                     </div>
                   </div>
-                ))
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Connected Students Block Grid (StudyPlay Blocks Theme) */}
+          <div className={`border rounded-[2.5rem] p-6 flex flex-col flex-1 min-h-[300px] transition-all duration-300 ${
+            isDarkMode 
+              ? 'bg-gradient-to-br from-[#121829] to-[#0a0e1a] border-indigo-950/80' 
+              : 'bg-white border-slate-200/80 shadow-sm'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-4 mb-4 ${
+              isDarkMode ? 'border-indigo-950/50' : 'border-slate-100'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-amber-500 rounded-full animate-pulse" />
+                <h3 className={`text-xs font-bold tracking-wider uppercase ${
+                  isDarkMode ? 'text-white' : 'text-slate-800'
+                }`}>សិស្សដែលបានចូលរួម (CONNECTED STUDENT ROSTER)</h3>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                isDarkMode 
+                  ? 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' 
+                  : 'text-indigo-700 bg-indigo-50 border-indigo-200'
+              }`}>
+                ចំនួន {approvedStudents.length} នាក់
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto max-h-[340px] custom-scrollbar">
+              {approvedStudents.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 p-1">
+                  {sortedStudents.map((student, sIdx) => {
+                    const blockColors = isDarkMode ? [
+                      'from-[#ffd9a6]/8 to-[#ffd9a6]/15 hover:from-[#ffd9a6]/20 border-amber-950/45 text-amber-200',
+                      'from-[#a8e6cf]/8 to-[#a8e6cf]/15 hover:from-[#a8e6cf]/20 border-emerald-950/45 text-emerald-250',
+                      'from-[#dcedc1]/8 to-[#dcedc1]/15 hover:from-[#dcedc1]/20 border-lime-950/45 text-lime-200',
+                      'from-[#ffd3b6]/8 to-[#ffd3b6]/15 hover:from-[#ffd3b6]/20 border-orange-950/45 text-orange-200',
+                      'from-[#ff8b94]/8 to-[#ff8b94]/15 hover:from-[#ff8b94]/20 border-rose-950/45 text-rose-200',
+                      'from-[#a8d8ea]/8 to-[#a8d8ea]/15 hover:from-[#a8d8ea]/20 border-sky-950/45 text-sky-200',
+                      'from-[#aa96da]/8 to-[#aa96da]/15 hover:from-[#aa96da]/20 border-purple-950/45 text-purple-200'
+                    ] : [
+                      'from-[#ffd9a6]/15 to-[#ffd9a6]/40 hover:from-[#ffd9a6]/50 border-amber-200 text-amber-900',
+                      'from-[#a8e6cf]/15 to-[#a8e6cf]/40 hover:from-[#a8e6cf]/50 border-emerald-200 text-emerald-900',
+                      'from-[#dcedc1]/15 to-[#dcedc1]/40 hover:from-[#dcedc1]/50 border-lime-200 text-lime-900',
+                      'from-[#ffd3b6]/15 to-[#ffd3b6]/40 hover:from-[#ffd3b6]/50 border-orange-200 text-orange-900',
+                      'from-[#ff8b94]/15 to-[#ff8b94]/40 hover:from-[#ff8b94]/50 border-rose-200 text-rose-900',
+                      'from-[#a8d8ea]/15 to-[#a8d8ea]/40 hover:from-[#a8d8ea]/50 border-sky-200 text-sky-900',
+                      'from-[#aa96da]/15 to-[#aa96da]/40 hover:from-[#aa96da]/50 border-purple-200 text-purple-900'
+                    ];
+                    const gridColor = blockColors[sIdx % blockColors.length];
+                    
+                    return (
+                      <div 
+                        key={student.id || sIdx}
+                        className={`flex flex-col items-center justify-center text-center p-4 rounded-2xl border bg-gradient-to-br transition-all hover:scale-[1.05] hover:-translate-y-0.5 relative overflow-hidden group shadow-md ${gridColor}`}
+                      >
+                        {/* Glow outline on group hover */}
+                        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                        
+                        {/* Inline controls to edit name or delete student */}
+                        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditStudentNameInLobby(student.id, student.name);
+                            }}
+                            className={`p-1.5 rounded-lg transition-colors border shadow-xs cursor-pointer flex items-center justify-center ${
+                              isDarkMode 
+                                ? 'bg-slate-900/85 border-slate-850 hover:bg-slate-800 text-slate-300 hover:text-indigo-400' 
+                                : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-indigo-600'
+                            }`}
+                            title="កែឈ្មោះសិស្ស (Edit Name)"
+                          >
+                            <Pencil className="w-3 h-3 text-slate-400 group-hover:text-indigo-400" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveStudentFromLobby(student.id, student.name);
+                            }}
+                            className={`p-1.5 rounded-lg transition-colors border shadow-xs cursor-pointer flex items-center justify-center ${
+                              isDarkMode 
+                                ? 'bg-slate-900/85 border-slate-850 hover:bg-slate-800 text-slate-300 hover:text-red-400' 
+                                : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-605 group-hover:text-red-650 text-slate-600'
+                            }`}
+                            title="លុបសិស្ស (Delete Student)"
+                          >
+                            <Trash2 className="w-3 h-3 text-slate-400 group-hover:text-red-400" />
+                          </button>
+                        </div>
+
+                        {/* 3D-feeling Character Avatar with customizable platform background */}
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-inner select-none mb-2 duration-300 group-hover:rotate-6 border ${
+                          isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-white/80 border-black/5'
+                        }`}>
+                          {student.emoji || "🧑‍🎓"}
+                        </div>
+
+                        <div className="min-w-0 w-full">
+                          <p className={`text-xs font-black truncate leading-tight ${
+                            isDarkMode ? 'text-white' : 'text-slate-800'
+                          }`}>{student.name}</p>
+                          <p className={`text-[9px] font-mono font-bold mt-1 flex items-center justify-center gap-1 leading-none ${
+                            isDarkMode ? 'text-slate-450 text-slate-400' : 'text-slate-500'
+                          }`}>
+                            <span className={isDarkMode ? 'text-indigo-350' : 'text-indigo-650 font-black'}>{student.score} XP</span>
+                            {sIdx === 0 && <span className="text-[8px] bg-amber-500/20 text-amber-500 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-500/10">👑 លេខ១</span>}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={`flex-1 flex flex-col items-center justify-center p-12 text-center ${
+                  isDarkMode ? 'text-slate-500' : 'text-slate-400'
+                }`}>
+                  <div className="w-16 h-16 bg-indigo-500/5 rounded-full flex items-center justify-center border border-indigo-500/10 mb-4 animate-pulse">
+                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
+                  </div>
+                  <p className={`text-sm font-black ${
+                    isDarkMode ? 'text-slate-300' : 'text-slate-600'
+                  }`}>មិនទាន់មានសិស្សភ្ជាប់លេងនៅឡើយទេ...</p>
+                  <p className={`text-[10px] mt-1.5 max-w-sm mx-auto leading-relaxed ${
+                    isDarkMode ? 'text-slate-500' : 'text-slate-500'
+                  }`}>
+                    ស្កេនរូប QR Code ឬចុចចម្លងតំណភ្ជាប់ហ្គេម ដើម្បីអញ្ជើញសិស្សឱ្យចូលរួមលេងជាមួយគ្នាភ្លាមៗ!
+                  </p>
+                </div>
               )}
             </div>
           </div>

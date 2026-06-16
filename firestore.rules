@@ -1,96 +1,65 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default deny catch-all
+    
+    // Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
-
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+    
+    // Primitive definition helpers
+    function incoming() {
+      return request.resource.data;
     }
-
+    
+    function existing() {
+      return resource.data;
+    }
+    
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
+    
+    // Validation helper for Teacher
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['id', 'name', 'schoolName', 'username', 'password'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.schoolName is string && data.schoolName.size() <= 150
+        && data.username is string && data.username.size() <= 50
+        && data.password is string && data.password.size() <= 100;
+    }
+    
+    // Validation helper for Class
+    function isValidClass(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100;
+    }
+    
+    // Validation helper for Student
+    function isValidStudent(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.score is number;
+    }
 
-    // Custom teachers collection rules (manual teacher signup/login)
     match /teachers/{teacherId} {
-      allow get: if isValidId(teacherId); // Allowed so local login can fetch teacher credentials to check password
-      allow list: if false; // Block query list queries to protect against credential scraping
-      allow create: if isValidId(teacherId) && !exists(/databases/$(database)/documents/teachers/$(teacherId)); // Register only if unique
-      allow update: if isValidId(teacherId);
-      allow delete: if false;
-    }
-
-    // Users collection rules
-    match /users/{userId} {
-      allow read: if true; // Publicly readable for leaderboards
-      allow create: if isValidId(userId); // Allow new user profile registrations
-      allow update: if (isSignedIn() && request.auth.uid == userId) || 
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(userId)));
-      allow delete: if (isSignedIn() && request.auth.uid == userId) ||
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(userId)));
-    }
-
-    // Quizzes collection rules
-    match /quizzes/{quizId} {
-      allow read: if true; // Needs to be readable so games can load questions
-      allow create: if (isSignedIn() && request.resource.data.creatorId == request.auth.uid) ||
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(request.resource.data.creatorId)));
-      allow update, delete: if (isSignedIn() && resource.data.creatorId == request.auth.uid) ||
-                               (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(resource.data.creatorId)));
-
-      // Subcollection of questions
-      match /questions/{questionId} {
-        allow read: if true; // Must be readable to load questions in live games
-        allow write: if (isSignedIn() && get(/databases/$(database)/documents/quizzes/$(quizId)).data.creatorId == request.auth.uid) ||
-                        (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(get(/databases/$(database)/documents/quizzes/$(quizId)).data.creatorId)));
+      allow create: if isValidTeacher(incoming());
+      allow get: if true;
+      allow update: if isValidTeacher(incoming()) && existing().password == incoming().password;
+      allow delete: if existing() != null;
+      
+      match /classes/{classId} {
+        allow read, write: if true;
       }
-    }
-
-    // Games collection rules
-    match /games/{gameId} {
-      allow read: if true; // Anyone can read the live game state to update their UI
-      allow create: if isSignedIn() ||
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(request.resource.data.hostId)));
-      allow update: if (isSignedIn() && resource.data.hostId == request.auth.uid) || 
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(resource.data.hostId))) ||
-                       // Allow players to update game if needed (e.g., ticking player joins, but normally host does bulk)
-                       true; 
-      allow delete: if (isSignedIn() && resource.data.hostId == request.auth.uid) ||
-                       (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(resource.data.hostId)));
-
-      // Subcollection of players
-      match /players/{playerId} {
-        allow read: if true; // Players can read current scoreboard
-        allow create: if true; // Students can register a nickname without an account
-        allow update: if true; // Students can submit answers and update their scores
-        allow delete: if (isSignedIn() && get(/databases/$(database)/documents/games/$(gameId)).data.hostId == request.auth.uid) ||
-                         (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(get(/databases/$(database)/documents/games/$(gameId)).data.hostId)));
+      
+      match /classes/{classId}/students/{studentId} {
+        allow read, write: if true;
       }
-
-      // Subcollection of leaderboard (if any)
-      match /leaderboard/{leaderboardId} {
-        allow read: if true;
-        allow write: if true;
+      
+      match /classes/{classId}/groupsData/{docId} {
+        allow read, write: if true;
       }
-    }
-
-    // Results collection rules
-    match /results/{resultId} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if (isSignedIn() && resource.data.hostId == request.auth.uid) ||
-                               (!isSignedIn() && exists(/databases/$(database)/documents/teachers/$(resource.data.hostId)));
-    }
-
-    // Achievements collection rules
-    match /achievements/{achievementId} {
-      allow read: if true;
-      allow write: if false; // Read-only collection
     }
   }
 }

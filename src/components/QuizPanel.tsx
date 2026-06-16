@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { HelpCircle, Timer, CheckCircle, XCircle, Info, Trophy, AlertCircle, RotateCcw, BookOpen, Plus, Trash2, Layers, Folder, Edit3, Check, X, ChevronDown, Printer, Download, Sparkles, Settings, Eye } from 'lucide-react';
+import { HelpCircle, Timer, CheckCircle, XCircle, Info, Trophy, AlertCircle, RotateCcw, BookOpen, Plus, Trash2, Layers, Folder, Edit3, Check, X, ChevronDown, Printer, Download, Sparkles, Settings, Eye, Pencil } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Question, QuizCard, Student, QuizRoom, QuizChapter } from '../types';
+import { Question, QuizCard, Student, QuizRoom, QuizChapter, QuizSubject } from '../types';
 import FormulaRenderer, { renderFormulaToHtml, preprocessText } from './FormulaRenderer';
 import { 
   Document, 
@@ -37,6 +37,14 @@ interface QuizPanelProps {
   onDeleteChapter: (chapterId: string) => void;
   isDarkMode?: boolean;
   onUpdateCards?: (updatedCards: QuizCard[]) => void;
+  
+  // Subject properties and callbacks
+  subjects?: QuizSubject[];
+  activeSubjectId?: string | null;
+  onSelectSubject?: (subjectId: string) => void;
+  onCreateSubject?: (name: string) => void;
+  onRenameSubject?: (subjectId: string, name: string) => void;
+  onDeleteSubject?: (subjectId: string) => void;
 }
 
 export const AVAILABLE_FONTS = [
@@ -81,7 +89,13 @@ export default function QuizPanel({
   onRenameChapter,
   onDeleteChapter,
   isDarkMode = false,
-  onUpdateCards
+  onUpdateCards,
+  subjects = [],
+  activeSubjectId = null,
+  onSelectSubject,
+  onCreateSubject,
+  onRenameSubject,
+  onDeleteSubject
 }: QuizPanelProps) {
   const activeRoom = chapters.reduce<QuizRoom | null>((found, ch) => {
     if (found) return found;
@@ -130,7 +144,8 @@ export default function QuizPanel({
         id: `q-added-${Date.now()}-${Math.random()}`,
         text: 'សំណួរថ្មី...',
         options: ['ចម្លើយទី ១', 'ចម្លើយទី ២', 'ចម្លើយទី ៣', 'ចម្លើយទី ៤'],
-        correctIndex: 0
+        correctIndex: 0,
+        questionType: 'general'
       },
       isRevealed: false,
       status: 'idle'
@@ -187,6 +202,21 @@ export default function QuizPanel({
     }));
   };
 
+  const handleUpdateLocalQuestionType = (questionType: 'general' | 'pisa') => {
+    setLocalEditCards(prev => prev.map((card, idx) => {
+      if (idx === selectedEditIndex) {
+        return {
+          ...card,
+          question: {
+            ...card.question,
+            questionType
+          }
+        };
+      }
+      return card;
+    }));
+  };
+
   const [savedScrollTop, setSavedScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -203,9 +233,15 @@ export default function QuizPanel({
   const [newChapterName, setNewChapterName] = useState('');
   const [openChapterDropdownId, setOpenChapterDropdownId] = useState<string | null>(null);
 
+  // Subject local editing states
+  const [isCreatingSubject, setIsCreatingSubject] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [tempSubjectName, setTempSubjectName] = useState('');
+
   // Export & Print state
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [headerFont, setHeaderFont] = useState('Khmer OS Muol Light');
+  const [headerFont, setHeaderFont] = useState('Moul');
   const [bodyFont, setBodyFont] = useState('Battambang');
   const [headerFontSize, setHeaderFontSize] = useState(10.5);
   const [bodyFontSize, setBodyFontSize] = useState(11);
@@ -219,17 +255,17 @@ export default function QuizPanel({
   const [customLeftSpan, setCustomLeftSpan] = useState<number>(5);
   const [customCenterSpan, setCustomCenterSpan] = useState<number>(2);
   const [customRightSpan, setCustomRightSpan] = useState<number>(5);
-  const [examCenter, setExamCenter] = useState('');
-  const [roomNumber, setRoomNumber] = useState('');
-  const [subjectName, setSubjectName] = useState('មេរៀនទី១');
-  const [deskNumber, setDeskNumber] = useState('');
+  const [examCenter, setExamCenter] = useState('.....................................................');
+  const [roomNumber, setRoomNumber] = useState('..................');
+  const [subjectName, setSubjectName] = useState('');
+  const [deskNumber, setDeskNumber] = useState('..................');
   
-  const [examName, setExamName] = useState('');
-  const [gradeNumber, setGradeNumber] = useState('');
-  const [examSession, setExamSession] = useState('');
-  const [durationTime, setDurationTime] = useState('');
-  const [totalScore, setTotalScore] = useState('');
-  const [studentName, setStudentName] = useState('');
+  const [examName, setExamName] = useState('...................................');
+  const [gradeNumber, setGradeNumber] = useState('..................');
+  const [examSession, setExamSession] = useState('......../......../........');
+  const [studentName, setStudentName] = useState('.......................');
+  const [durationTime, setDurationTime] = useState('................ នាទី');
+  const [totalScore, setTotalScore] = useState('...... ពិន្ទុ');
   
   const [logoText1, setLogoText1] = useState('សាលារៀនសុវណ្ណភូមិ');
   const [logoText2, setLogoText2] = useState('ទីតាំងផ្សារដីហុយ');
@@ -396,12 +432,6 @@ export default function QuizPanel({
           vertical-align: top;
           padding: 4px;
         }
-        .header-right-cell {
-          font-family: ${selectedHeaderFontObj.cssValue};
-          font-size: ${headerFontSize}pt;
-          vertical-align: top;
-          padding: 4px;
-        }
         .center-text {
           text-align: center;
         }
@@ -464,10 +494,10 @@ export default function QuizPanel({
         <table class="header-table">
           <tr>
             <td class="header-cell" style="width: 30%;">
-              <div>មណ្ឌលប្រឡង៖ <span class="bold-text">${examCenter || '.....................................................'}</span></div>
-              <div style="margin-top: 6px;">លេខបន្ទប់៖ <span class="bold-text">${roomNumber || '..................'}</span></div>
-              <div style="margin-top: 6px;">វិញ្ញាសា៖ <span class="bold-text">${subjectName || '.....................................'}</span></div>
-              <div style="margin-top: 6px;">លេខតុ៖ <span class="bold-text">${deskNumber || '..................'}</span></div>
+              <div>មណ្ឌលប្រឡង៖ <span class="bold-text">${examCenter}</span></div>
+              <div style="margin-top: 6px;">លេខបន្ទប់៖ <span class="bold-text">${roomNumber}</span></div>
+              <div style="margin-top: 6px;">វិញ្ញាសា៖ <span class="bold-text">${subjectName}</span></div>
+              <div style="margin-top: 6px;">លេខតុ៖ <span class="bold-text">${deskNumber}</span></div>
             </td>
             <td class="header-cell center-text" style="width: 32%;">
               <div style="height: 60px; text-align: center;">
@@ -482,11 +512,12 @@ export default function QuizPanel({
               <div class="school-title">${logoText1}</div>
               <div style="font-size: 9pt; margin-top: 2px;">${logoText2}</div>
             </td>
-            <td class="header-right-cell" style="width: 38%; text-align: left; padding-left: 10px;">
-              <div>ប្រឡង៖ <span class="bold-text">${examName || '..................'}</span> &nbsp;&nbsp;&nbsp; ថ្នាក់ទី៖ <span class="bold-text">${gradeNumber || '...............'}</span></div>
-              <div style="margin-top: 6px;">ឈ្មោះ៖ <span class="bold-text">${studentName || '.....................................'}</span></div>
-              <div style="margin-top: 6px;">សម័យប្រឡង៖ <span class="bold-text">${examSession || '......../......../........'}</span></div>
-              <div style="margin-top: 6px;">រយៈពេល៖ <span class="bold-text">${getDurationDisplay(durationTime) || '................ នាទី'}</span> <span style="font-size: 9pt;">(${getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
+            <td class="header-cell" style="width: 38%; text-align: left; padding-left: 10px;">
+              <div>ប្រឡង៖ <span class="bold-text">${examName}</span></div>
+              <div style="margin-top: 6px;">ថ្នាក់ទី៖ <span class="bold-text">${gradeNumber}</span></div>
+              <div style="margin-top: 6px;">សម័យប្រឡង៖ <span class="bold-text">${examSession}</span></div>
+              <div style="margin-top: 6px;">ឈ្មោះ៖ <span class="bold-text">${studentName}</span></div>
+              <div style="margin-top: 6px;">រយៈពេល៖ <span class="bold-text">${durationTime}</span> ${totalScore ? `<span style="font-size: 9pt;">(${totalScore})</span>` : ''}</div>
             </td>
           </tr>
         </table>
@@ -864,37 +895,44 @@ export default function QuizPanel({
       return runs;
     };
 
-    // Document Table Layout widths calculations (Summing up to 100%)
+    // Document Table Layout widths calculations (Summing up to 90%, leaving 10% for the Score box)
     const totalSpan = customLeftSpan + customCenterSpan + customRightSpan;
     
     let pctLeft = 38;
     let pctCenter = 15;
-    let pctRight = 47;
+    let pctRight = 37;
+    let pctScore = 10;
     
     if (headerLayout === '5-1-5') {
       pctLeft = 44;
       pctCenter = 10;
-      pctRight = 46;
+      pctRight = 36;
+      pctScore = 10;
     } else if (headerLayout === '5-2-5') {
       pctLeft = 38;
       pctCenter = 20;
-      pctRight = 42;
+      pctRight = 32;
+      pctScore = 10;
     } else if (headerLayout === '4-4-4') {
       pctLeft = 33;
       pctCenter = 33;
-      pctRight = 34;
+      pctRight = 24;
+      pctScore = 10;
     } else if (headerLayout === '4-2-6') {
       pctLeft = 33;
       pctCenter = 17;
-      pctRight = 50;
+      pctRight = 40;
+      pctScore = 10;
     } else if (headerLayout === '5-1-6') {
       pctLeft = 38;
       pctCenter = 10;
-      pctRight = 52;
+      pctRight = 42;
+      pctScore = 10;
     } else if (headerLayout === 'custom') {
-      pctLeft = Math.round((customLeftSpan / totalSpan) * 100);
-      pctCenter = Math.round((customCenterSpan / totalSpan) * 100);
-      pctRight = 100 - pctLeft - pctCenter;
+      pctLeft = Math.round((customLeftSpan / totalSpan) * 90);
+      pctCenter = Math.round((customCenterSpan / totalSpan) * 90);
+      pctRight = 90 - pctLeft - pctCenter;
+      pctScore = 10;
     }
 
     // Borderless Style Definition
@@ -983,17 +1021,14 @@ export default function QuizPanel({
         spacing: { after: 120 },
         children: [
           new TextRun({ text: "ប្រឡង៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
-          new TextRun({ text: examName || "..................", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
-          new TextRun({ text: "  ", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
-          new TextRun({ text: "ថ្នាក់ទី៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
-          new TextRun({ text: gradeNumber || "...............", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
+          new TextRun({ text: examName || "..................", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
         ]
       }),
       new Paragraph({
         spacing: { after: 120 },
         children: [
-          new TextRun({ text: "ឈ្មោះ៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
-          new TextRun({ text: studentName || ".....................................", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
+          new TextRun({ text: "ថ្នាក់ទី៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
+          new TextRun({ text: gradeNumber || "...............", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
         ]
       }),
       new Paragraph({
@@ -1004,10 +1039,17 @@ export default function QuizPanel({
         ]
       }),
       new Paragraph({
+        spacing: { after: 120 },
+        children: [
+          new TextRun({ text: "ឈ្មោះ៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
+          new TextRun({ text: studentName || ".......................", font: selectedHeaderFontObj.name, size: headerFontSize * 2 })
+        ]
+      }),
+      new Paragraph({
         children: [
           new TextRun({ text: "រយៈពេល៖ ", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true }),
-          new TextRun({ text: getDurationDisplay(durationTime) || "................ នាទី", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
-          new TextRun({ text: getScoreDisplay(totalScore) ? ` (${getScoreDisplay(totalScore)})` : " (...... ពិន្ទុ)", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true })
+          new TextRun({ text: durationTime ? `${durationTime}` : "................ នាទី", font: selectedHeaderFontObj.name, size: headerFontSize * 2 }),
+          new TextRun({ text: totalScore ? ` (${totalScore})` : " (...... ពិន្ទុ)", font: selectedHeaderFontObj.name, size: headerFontSize * 2, bold: true })
         ]
       })
     ];
@@ -1029,7 +1071,7 @@ export default function QuizPanel({
               children: centerCellChildren,
             }),
             new TableCell({
-              width: { size: pctRight, type: WidthType.PERCENTAGE },
+              width: { size: pctRight + pctScore, type: WidthType.PERCENTAGE },
               borders: tableBordersNone,
               margins: { left: 200 },
               children: rightCellChildren,
@@ -1419,7 +1461,16 @@ export default function QuizPanel({
           >
             <div className="bg-white dark:bg-white border-2 border-slate-200 shadow-md rounded-[2rem] p-10 mb-8 flex-1 flex flex-col items-center justify-center relative overflow-hidden">
               <HelpCircle className="absolute -top-12 -right-12 w-48 h-48 text-indigo-500/5 rotate-12" />
-              <span className="text-xs uppercase font-black tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">សំណួរលេខ {activeCard.number}</span>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs uppercase font-black tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">សំណួរលេខ {activeCard.number}</span>
+                <span className={`text-xs font-black px-3 py-1 rounded-full ${
+                  activeCard.question?.questionType === 'pisa'
+                    ? 'text-indigo-805 bg-indigo-50 border border-indigo-200 text-indigo-600'
+                    : 'text-amber-805 bg-amber-50 border border-amber-200 text-amber-600'
+                }`}>
+                  {activeCard.question?.questionType === 'pisa' ? '🎯 តេស្ត PISA' : '📚 មេរៀនទូទៅ'}
+                </span>
+              </div>
               <h2 className="text-3xl sm:text-4xl font-black text-slate-950 text-center leading-relaxed relative z-10 max-w-2xl break-words whitespace-normal word-break-break-word">
                 <FormulaRenderer text={activeCard.question?.text || ''} />
               </h2>
@@ -1491,6 +1542,18 @@ export default function QuizPanel({
                       </p>
                     </div>
                   )}
+
+                  {activeCard?.question?.explanation && (
+                    <div className="mb-4 p-4 bg-white/40 dark:bg-slate-900/40 border border-white/20 dark:border-slate-800 rounded-2xl max-w-lg text-slate-800 dark:text-slate-200">
+                      <div className="flex items-center gap-1.5 text-[11px] font-black uppercase text-slate-700 dark:text-indigo-300 mb-1.5 tracking-wide">
+                        <span>💡 ការពន្យល់ស្ដង់ដា (Standard Explanation)៖</span>
+                      </div>
+                      <p className="text-[12.5px] leading-relaxed font-semibold">
+                        {activeCard.question.explanation}
+                      </p>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleContinue}
                     className={`px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 cursor-pointer ${
@@ -1570,18 +1633,6 @@ export default function QuizPanel({
     }
   };
 
-  const getDurationDisplay = (val: string) => {
-    if (!val || val.trim() === '') return '';
-    if (val.includes('នាទី') || val.includes('min') || val.includes('mn')) return val;
-    return `${val} នាទី`;
-  };
-
-  const getScoreDisplay = (val: string) => {
-    if (!val || val.trim() === '') return '';
-    if (val.includes('ពិន្ទុ') || val.includes('pt') || val.includes('pts')) return val;
-    return `${val} ពិន្ទុ`;
-  };
-
   const renderDotField = (value: string, fallbackDots: string) => {
     const actualVal = (value || '').trim() === '' ? fallbackDots : value;
     // Checks if the field is empty or contains purely dots/separators
@@ -1618,11 +1669,6 @@ export default function QuizPanel({
   };
 
   const headerInlineStyle = {
-    fontFamily: selectedHeaderFontObj.cssValue,
-    fontSize: `${headerFontSize}pt`
-  };
-
-  const rightColumnInlineStyle = {
     fontFamily: selectedHeaderFontObj.cssValue,
     fontSize: `${headerFontSize}pt`
   };
@@ -1858,6 +1904,174 @@ export default function QuizPanel({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Subject Selection Section */}
+          <div className="mb-6 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-visible">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest flex items-center gap-1.5">
+                  📚 មុខវិជ្ជាសកម្ម (Active Subject) ៖
+                </h4>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold leading-relaxed">
+                  សូមជ្រើសរើស មុខវិជ្ជាសកម្ម ដើម្បីមើលជំពូក និងមេរៀនរបស់មុខវិជ្ជានោះ។
+                </p>
+              </div>
+
+              {!isCreatingSubject ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingSubject(true);
+                    setNewSubjectName('');
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-md shadow-emerald-600/10 active:scale-95 flex items-center gap-1.5 shrink-0 self-start md:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>បន្ថែមមុខវិជ្ជា</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 p-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs animate-in fade-in-25 duration-100 shrink-0">
+                  <input
+                    type="text"
+                    placeholder="ឈ្មោះមុខវិជ្ជាថ្មី..."
+                    value={newSubjectName}
+                    onChange={(e) => setNewSubjectName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (newSubjectName.trim() && onCreateSubject) {
+                          onCreateSubject(newSubjectName.trim());
+                        }
+                        setIsCreatingSubject(false);
+                      }
+                      if (e.key === 'Escape') setIsCreatingSubject(false);
+                    }}
+                    autoFocus
+                    className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 w-36 sm:w-44 font-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newSubjectName.trim() && onCreateSubject) {
+                        onCreateSubject(newSubjectName.trim());
+                      }
+                      setIsCreatingSubject(false);
+                    }}
+                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-all active:scale-95"
+                  >
+                    បន្ថែម
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingSubject(false)}
+                    className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 hover:text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-all active:scale-95"
+                  >
+                    បោះបង់
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* List of subjects as pills */}
+            <div className="mt-4 flex flex-wrap gap-3">
+              {subjects.map((sub) => {
+                const isActive = sub.id === activeSubjectId;
+                const isEditing = editingSubjectId === sub.id;
+
+                if (isEditing) {
+                  return (
+                    <div 
+                      key={sub.id} 
+                      className="flex items-center gap-1.5 p-1 bg-indigo-500/5 border border-indigo-500 rounded-xl animate-in zoom-in-95 duration-100"
+                    >
+                      <input
+                        type="text"
+                        value={tempSubjectName}
+                        onChange={(e) => setTempSubjectName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (tempSubjectName.trim() && onRenameSubject) {
+                              onRenameSubject(sub.id, tempSubjectName.trim());
+                            }
+                            setEditingSubjectId(null);
+                          }
+                          if (e.key === 'Escape') setEditingSubjectId(null);
+                        }}
+                        autoFocus
+                        className="px-2 py-1 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-slate-105 font-bold w-32"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (tempSubjectName.trim() && onRenameSubject) {
+                            onRenameSubject(sub.id, tempSubjectName.trim());
+                          }
+                          setEditingSubjectId(null);
+                        }}
+                        className="p-1 text-green-600 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 rounded-md cursor-pointer shrink-0 transition-all active:scale-90"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSubjectId(null)}
+                        className="p-1 text-slate-500 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-md cursor-pointer shrink-0 transition-all active:scale-90"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                }
+
+                const subEmoji = sub.name === 'រូបវិទ្យា' ? '🧬' : sub.name === 'គីមីវិទ្យា' ? '🧪' : '📚';
+
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => {
+                      if (!isActive && onSelectSubject) {
+                        onSelectSubject(sub.id);
+                      }
+                    }}
+                    className={`group px-3.5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border flex items-center gap-2.5 hover:shadow-xs relative select-none ${
+                      isActive
+                        ? 'bg-indigo-500/10 border-indigo-505 text-indigo-900 dark:text-indigo-305 font-extrabold ring-1 ring-indigo-500/20 shadow-sm'
+                        : 'bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-850 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    <span>{subEmoji} {sub.name}</span>
+                    
+                    {/* Tiny action block inside pills */}
+                    <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1 pl-1 border-l border-slate-300 dark:border-slate-700">
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingSubjectId(sub.id);
+                          setTempSubjectName(sub.name);
+                        }}
+                        className="p-0.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950 rounded cursor-pointer transition-transform active:scale-90"
+                        title="កែឈ្មោះមុខវិជ្ជា"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onDeleteSubject) {
+                            onDeleteSubject(sub.id);
+                          }
+                        }}
+                        className="p-0.5 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950 rounded cursor-pointer transition-transform active:scale-90"
+                        title="លុបមុខវិជ្ជា"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -2243,9 +2457,18 @@ export default function QuizPanel({
                           }`}>
                             {idx + 1}
                           </span>
-                          <span className="text-xs font-bold truncate pr-1">
-                            {card.question?.text || '(គ្មានសំណួរ)'}
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs font-bold truncate pr-1 block">
+                              {card.question?.text || '(គ្មានសំណួរ)'}
+                            </span>
+                            <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md mt-1 ${
+                              card.question?.questionType === 'pisa'
+                                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/10'
+                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/10'
+                            }`}>
+                              {card.question?.questionType === 'pisa' ? '🎯 PISA' : '📚 ទូទៅ'}
+                            </span>
+                          </div>
                         </div>
 
                         <button
@@ -2281,7 +2504,7 @@ export default function QuizPanel({
                         </span>
                       </div>
 
-                      {/* Question text */}
+                       {/* Question text */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                           ខ្លឹមសារសំណួរ៖
@@ -2293,6 +2516,39 @@ export default function QuizPanel({
                           placeholder="បញ្ចូលខ្លឹមសារសំណួរ..."
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-850 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-sm"
                         />
+                      </div>
+
+                      {/* Question category selector */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                          ប្រភេទសំណួរ (Question Category)៖
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLocalQuestionType('general')}
+                            className={`px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer border flex flex-col items-center gap-1 text-center justify-center ${
+                              (localEditCards[selectedEditIndex].question?.questionType || 'general') === 'general'
+                                ? 'bg-amber-500/10 border-amber-500 text-amber-900 dark:text-amber-300 font-black'
+                                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="text-sm">📚 សំណួរបែបទូទៅនៃមេរៀន</span>
+                            <span className="text-[10px] opacity-75 font-semibold">General Lesson Question</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLocalQuestionType('pisa')}
+                            className={`px-4 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer border flex flex-col items-center gap-1 text-center justify-center ${
+                              localEditCards[selectedEditIndex].question?.questionType === 'pisa'
+                                ? 'bg-indigo-500/10 border-indigo-505 border-indigo-500 text-indigo-900 dark:text-indigo-300 font-black'
+                                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="text-sm">🎯 សំណួរបែបតេស្ត PISA</span>
+                            <span className="text-[10px] opacity-75 font-semibold">PISA Test Question</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Option Inputs */}
@@ -2505,6 +2761,15 @@ export default function QuizPanel({
                           />
                         </div>
                         <div>
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">ឈ្មោះ</label>
+                          <input
+                            type="text"
+                            value={studentName}
+                            onChange={(e) => setStudentName(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white"
+                          />
+                        </div>
+                        <div>
                           <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">រយៈពេល & ពិន្ទុ</label>
                           <div className="flex gap-1.5">
                             <input
@@ -2522,16 +2787,6 @@ export default function QuizPanel({
                               className="w-1/2 px-2 py-1 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white"
                             />
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">ឈ្មោះសិស្ស</label>
-                          <input
-                            type="text"
-                            value={studentName}
-                            onChange={(e) => setStudentName(e.target.value)}
-                            placeholder="ឈ្មោះ..."
-                            className="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white"
-                          />
                         </div>
                       </div>
                     </div>
@@ -2603,7 +2858,7 @@ export default function QuizPanel({
                                 }
                               }}
                             />
-                            <label
+                             <label
                               htmlFor="custom-logo-uploader"
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 border border-indigo-150 dark:border-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-black rounded-lg cursor-pointer transition-all active:scale-95 uppercase tracking-wide"
                             >
@@ -2697,8 +2952,6 @@ export default function QuizPanel({
                       </label>
                     </div>
                   </div>
-
-                  {/* Page Size & Margins Settings Card */}
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
                     <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2">
                       <Layers className="w-4 h-4 text-purple-500" />
@@ -2743,14 +2996,16 @@ export default function QuizPanel({
                                 setMarginRight(1.5);
                               }
                             }}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl font-medium focus:ring-1 focus:ring-indigo-500 outline-none cursor-pointer"
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-755 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl font-medium focus:ring-1 focus:ring-indigo-500 outline-none cursor-pointer"
                           >
                             <option value="cm" className="bg-white text-black dark:bg-slate-900 dark:text-white">សង់ទីម៉ែត្រ (cm)</option>
                             <option value="in" className="bg-white text-black dark:bg-slate-900 dark:text-white">អ៊ីញ (inches)</option>
                           </select>
                         </div>
+                      </div>
 
-                        {/* Header Layout type selector */}
+                      {/* Header Layout Choice */}
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2 col-span-2">
                           <label className="font-bold text-slate-700 dark:text-slate-300">ប្លង់ក្បាលសន្លឹកកិច្ចការ (Header Layout)៖</label>
                           <select
@@ -2866,6 +3121,8 @@ export default function QuizPanel({
                     </div>
                   </div>
 
+
+
                   {/* Font & Font Size Configurations */}
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
                     <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2">
@@ -2874,6 +3131,7 @@ export default function QuizPanel({
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-xs">
+
                       {/* Header Font and Size */}
                       <div className="space-y-2">
                         <label className="font-bold text-slate-700 dark:text-slate-300">ពុម្ពអក្សរក្បាលលើ (Header Font)៖</label>
@@ -2930,7 +3188,6 @@ export default function QuizPanel({
                     </div>
                   </div>
                 </div>
-
 
 
                 {/* Right page visual preview panel */}
@@ -2996,14 +3253,20 @@ export default function QuizPanel({
                       </div>
 
                       {/* Right Block */}
-                      <div className={`${layoutWidths.right.className} flex flex-col gap-1.5 text-left font-black text-slate-950 pl-2 leading-snug font-sans`} style={{ ...rightColumnInlineStyle, ...layoutWidths.right.style }}>
-                        <div className="flex justify-between items-center w-full truncate">
-                          <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
-                          <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
+                      <div className={`${layoutWidths.right.className} flex items-start justify-between gap-1.5 text-left font-black text-slate-950 pl-2 leading-snug font-sans`} style={{ ...headerInlineStyle, ...layoutWidths.right.style }}>
+                        <div className="flex-1 flex flex-col gap-1.5 min-w-0 font-sans">
+                          <div className="flex justify-between items-center w-full truncate">
+                            <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
+                            <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
+                          </div>
+                          <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
+                          <div className="truncate">រយៈពេល៖ {renderDotField(durationTime, '................ នាទី')} <span className="font-black text-[9px]">({totalScore || '...... ពិន្ទុ'})</span></div>
                         </div>
-                        <div className="truncate">ឈ្មោះ៖ {renderDotField(studentName, '.....................................')}</div>
-                        <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
-                        <div className="truncate">រយៈពេល៖ {renderDotField(getDurationDisplay(durationTime), '................ នាទី')} <span className="font-black text-[9px]">({getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
+
+                        {/* Score Oval Place */}
+                        <div className="border-double border-[3px] border-slate-900 rounded-[50%/50%] w-[84px] h-[64px] flex flex-col items-center justify-center shrink-0 self-end mt-4 p-1 translate-y-3" title="រង្វង់សម្រាប់ដាក់ពិន្ទុ">
+                          <div className="border-t border-dashed border-slate-700 w-[55px] my-auto"></div>
+                        </div>
                       </div>
                     </div>
 
@@ -3176,14 +3439,20 @@ export default function QuizPanel({
           </div>
           
           {/* Right Column */}
-          <div className={`${layoutWidths.right.className} flex flex-col justify-start text-left font-black gap-2 mt-[6px] pl-4 font-sans`} style={{ ...rightColumnInlineStyle, ...layoutWidths.right.style }}>
-            <div className="flex justify-between items-center w-full">
-              <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
-              <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
+          <div className={`${layoutWidths.right.className} flex items-start justify-between gap-1.5 mt-[6px] pl-4`} style={{ ...headerInlineStyle, ...layoutWidths.right.style }}>
+            <div className="flex-1 flex flex-col justify-start text-left font-black gap-2 min-w-0">
+              <div className="flex justify-between items-center w-full">
+                <span>ប្រឡង៖ {renderDotField(examName, '..................')}</span>
+                <span>ថ្នាក់ទី៖ {renderDotField(gradeNumber, '...............')}</span>
+              </div>
+              <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
+              <div className="truncate">រយៈពេល៖ {renderDotField(durationTime, '................ នាទី')} <span className="font-medium">({totalScore || '...... ពិន្ទុ'})</span></div>
             </div>
-            <div className="truncate">ឈ្មោះ៖ {renderDotField(studentName, '.....................................')}</div>
-            <div className="truncate">សម័យប្រឡង៖ {renderDotField(examSession, '......../......../........')}</div>
-            <div className="truncate">រយៈពេល៖ {renderDotField(getDurationDisplay(durationTime), '................ នាទី')} <span className="font-medium">({getScoreDisplay(totalScore) || '...... ពិន្ទុ'})</span></div>
+
+            {/* Score Oval Place */}
+            <div className="border-double border-[3px] border-black rounded-[50%/50%] w-[88px] h-[66px] flex flex-col items-center justify-center shrink-0 self-end mt-4 p-1 translate-y-3" title="រង្វង់សម្រាប់ដាក់ពិន្ទុ">
+              <div className="border-t border-dashed border-black w-[58px] my-auto"></div>
+            </div>
           </div>
         </div>
         

@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Users, Plus, Minus, Shuffle, Download, FileSpreadsheet, Award, Check, TrendingUp, Trophy, Loader2, Cloud } from 'lucide-react';
 import { Student, TeacherAccount } from '../types';
 import * as XLSX from 'xlsx';
-import { db, doc, getDoc, setDoc } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface GroupDividerProps {
   students: Student[];
   activeClassName: string;
   activeClassId: string;
   teacher: TeacherAccount | null;
+  isDarkMode?: boolean;
 }
 
 interface GroupMember extends Student {
@@ -26,7 +28,8 @@ export default function GroupDivider({
   students, 
   activeClassName,
   activeClassId,
-  teacher
+  teacher,
+  isDarkMode = false
 }: GroupDividerProps) {
   const [numGroups, setNumGroups] = useState(4);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -407,17 +410,25 @@ export default function GroupDivider({
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Set Number of Teams Panel */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className={`p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6 border transition-all duration-300 ${
+        isDarkMode ? 'bg-[#121829] border-slate-805 border-indigo-950/80 shadow-md' : 'bg-white border-slate-200 shadow-sm'
+      }`}>
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-305 duration-300 ${
+            isDarkMode ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-600'
+          }`}>
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold text-slate-800 dark:text-white leading-tight">កំណត់ការបែងចែកក្រុមស្មើគ្នា</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold flex items-center gap-2 flex-wrap">
-              <span>ថ្នាក់៖ <span className="text-indigo-600 dark:text-indigo-400 font-bold">{activeClassName}</span></span>
+            <h2 className={`text-xl font-extrabold leading-tight transition-all duration-300 ${
+              isDarkMode ? 'text-white' : 'text-slate-800'
+            }`}>កំណត់ការបែងចែកក្រុមស្មើគ្នា</h2>
+            <p className={`text-xs mt-1 font-semibold flex items-center gap-2 flex-wrap transition-all duration-300 ${
+              isDarkMode ? 'text-slate-400' : 'text-slate-500'
+            }`}>
+              <span>ថ្នាក់៖ <span className={`font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{activeClassName}</span></span>
               <span>•</span>
-              <span>សិស្សសរុប៖ <span className="text-indigo-600 dark:text-indigo-400 font-bold">{students.length} នាក់</span></span>
+              <span>សិស្សសរុប៖ <span className={`font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{students.length} នាក់</span></span>
             </p>
           </div>
         </div>
@@ -434,19 +445,31 @@ export default function GroupDivider({
             </button>
           )}
 
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 shadow-inner select-none">
+          <div className={`flex items-center rounded-2xl p-1 shadow-inner select-none border transition-all duration-300 ${
+            isDarkMode ? 'bg-slate-950 border-slate-850 border-indigo-950/80' : 'bg-slate-100 border-slate-200'
+          }`}>
             <button
               onClick={handleDecrement}
               disabled={numGroups <= 2}
-              className="w-10 h-10 flex items-center justify-center text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-all cursor-pointer"
+              className={`w-10 h-10 flex items-center justify-center rounded-xl disabled:opacity-40 transition-all cursor-pointer border ${
+                isDarkMode 
+                  ? 'text-slate-400 bg-slate-905 bg-slate-900 border-slate-800 hover:bg-slate-800' 
+                  : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'
+              }`}
             >
               <Minus className="w-4 h-4" />
             </button>
-            <span className="w-12 text-center text-lg font-black text-slate-800 dark:text-white font-mono">{numGroups}</span>
+            <span className={`w-12 text-center text-lg font-black font-mono transition-all duration-300 ${
+              isDarkMode ? 'text-white' : 'text-slate-800'
+            }`}>{numGroups}</span>
             <button
               onClick={handleIncrement}
               disabled={numGroups >= students.length}
-              className="w-10 h-10 flex items-center justify-center text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-all cursor-pointer"
+              className={`w-10 h-10 flex items-center justify-center rounded-xl disabled:opacity-40 transition-all cursor-pointer border ${
+                isDarkMode 
+                  ? 'text-slate-400 bg-slate-905 bg-slate-900 border-slate-800 hover:bg-slate-800' 
+                  : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'
+              }`}
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -469,24 +492,38 @@ export default function GroupDivider({
           {groups.map((group) => (
             <div
               key={group.id}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col"
+              className={`rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col border ${
+                isDarkMode ? 'bg-[#121829] border-indigo-950/80' : 'bg-white border-slate-200'
+              }`}
             >
               {/* Group Title and Info */}
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className={`flex items-center justify-between border-b pb-3 mb-4 transition-all duration-300 ${
+                isDarkMode ? 'border-slate-800/80 border-indigo-950/30' : 'border-slate-100'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all duration-300 ${
+                    isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'
+                  }`}>
                     {group.id}
                   </div>
-                  <h3 className="font-extrabold text-indigo-600 dark:text-indigo-400 font-sans text-base">{group.name}</h3>
+                  <h3 className={`font-extrabold font-sans text-base transition-all duration-300 ${
+                    isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
+                  }`}>{group.name}</h3>
                 </div>
-                <span className="text-[11px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-300 font-black px-2.5 py-0.5 rounded-full uppercase">
+                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase transition-all duration-300 ${
+                  isDarkMode ? 'bg-indigo-950/40 text-indigo-300' : 'bg-indigo-50 text-indigo-650'
+                }`}>
                   {group.members.length} នាក់
                 </span>
               </div>
 
               {/* Score Group Interface */}
-              <div className="bg-indigo-50/40 dark:bg-slate-950 border border-indigo-100/50 dark:border-slate-800/80 p-3.5 rounded-2xl mb-4 space-y-2">
-                <span className="block text-[11px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+              <div className={`p-3.5 rounded-2xl mb-4 space-y-2 border transition-all duration-300 ${
+                isDarkMode ? 'bg-slate-950/50 border-slate-800/80' : 'bg-indigo-50/40 border-indigo-100/50'
+              }`}>
+                <span className={`block text-[11px] font-black uppercase tracking-wider transition-all duration-300 ${
+                  isDarkMode ? 'text-indigo-400' : 'text-indigo-700'
+                }`}>
                   🎯 ដាក់ពិន្ទុឲ្យក្រុម
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -519,7 +556,9 @@ export default function GroupDivider({
                     -៥
                   </button>
 
-                  <div className="w-[1.2px] h-6 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+                  <div className={`w-[1.2px] h-6 mx-0.5 transition-all duration-300 ${
+                    isDarkMode ? 'bg-slate-800' : 'bg-slate-200'
+                  }`} />
 
                   <div className="flex items-center gap-1 shrink-0">
                     <input
@@ -527,7 +566,9 @@ export default function GroupDivider({
                       placeholder="ពិន្ទុ"
                       value={groupScoreInputs[group.id] || ''}
                       onChange={(e) => setGroupScoreInputs(prev => ({ ...prev, [group.id]: e.target.value }))}
-                      className="w-12 text-center text-xs font-black bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-100"
+                      className={`w-12 text-center text-xs font-black rounded-lg py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 border transition-all duration-300 ${
+                        isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-300 text-slate-800'
+                      }`}
                     />
                     <button
                       onClick={() => handleAddGroupScore(group.id)}
@@ -549,7 +590,11 @@ export default function GroupDivider({
                   return (
                     <div
                       key={member.id}
-                      className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/60 rounded-2xl text-slate-700 dark:text-slate-300 transition-all hover:border-slate-200 dark:hover:border-slate-700"
+                      className={`flex items-center justify-between p-2.5 rounded-2xl transition-all border ${
+                        isDarkMode 
+                          ? 'bg-slate-950/20 border-indigo-950/30 text-slate-300 hover:border-slate-800' 
+                          : 'bg-slate-50 border-slate-100 text-slate-700 hover:border-slate-200'
+                      }`}
                     >
                       <div className="flex items-center gap-2 truncate">
                         <span className="text-base shrink-0 select-none">
@@ -557,8 +602,12 @@ export default function GroupDivider({
                         </span>
                         <div className="truncate text-left">
                           <div className="truncate text-sm font-bold flex items-center gap-1.5">
-                            <span className="truncate text-slate-800 dark:text-slate-200">{member.name}</span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-extrabold shrink-0">
+                            <span className={`truncate transition-all duration-300 ${
+                              isDarkMode ? 'text-slate-200' : 'text-slate-800'
+                            }`}>{member.name}</span>
+                            <span className={`text-[11px] font-extrabold shrink-0 transition-all duration-300 ${
+                              isDarkMode ? 'text-slate-400 text-indigo-300' : 'text-slate-500'
+                            }`}>
                               ({member.assignedRole || 'សមាជិក'})
                             </span>
                             {member.gender && (
@@ -574,7 +623,9 @@ export default function GroupDivider({
                       <div className="flex items-center gap-1 shrink-0 ml-2">
                         {/* Current Group Score */}
                         <div className="flex flex-col items-center">
-                          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-black min-w-[42px] justify-center shadow-inner" title="ពិន្ទុក្នុងក្រុម">
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-black min-w-[42px] justify-center shadow-inner transition-all duration-300 ${
+                            isDarkMode ? 'bg-emerald-950/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                          }`} title="ពិន្ទុក្នុងក្រុម">
                             <Trophy className="w-3 h-3 text-amber-500 shrink-0" />
                             <span>{liveGroupScore}</span>
                           </div>
@@ -583,7 +634,11 @@ export default function GroupDivider({
                         {/* Increment Student Group Score */}
                         <button
                           onClick={() => handleUpdateStudentScore(group.id, member.id, 1)}
-                          className="w-6 h-6 flex items-center justify-center bg-emerald-500/10 hover:bg-emerald-505 text-emerald-600 hover:text-white rounded-lg text-xs font-black transition-all shrink-0 cursor-pointer active:scale-90"
+                          className={`w-6 h-6 flex items-center justify-center rounded-lg text-xs font-black transition-all shrink-0 cursor-pointer active:scale-90 ${
+                            isDarkMode 
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white' 
+                              : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white'
+                          }`}
                           title="បន្ថែម ១ ពិន្ទុក្រុម"
                         >
                           +
@@ -592,7 +647,11 @@ export default function GroupDivider({
                         {/* Decrement Student Group Score */}
                         <button
                           onClick={() => handleUpdateStudentScore(group.id, member.id, -1)}
-                          className="w-6 h-6 flex items-center justify-center bg-rose-500/10 hover:bg-rose-505 text-rose-600 hover:text-white rounded-lg text-xs font-black transition-all shrink-0 cursor-pointer active:scale-90"
+                          className={`w-6 h-6 flex items-center justify-center rounded-lg text-xs font-black transition-all shrink-0 cursor-pointer active:scale-90 ${
+                            isDarkMode 
+                              ? 'bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white' 
+                              : 'bg-rose-500/10 hover:bg-rose-500 text-rose-600 hover:text-white'
+                          }`}
                           title="ដក ១ ពិន្ទុក្រុម"
                         >
                           -
@@ -606,9 +665,15 @@ export default function GroupDivider({
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-white dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
-          <Users className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-2 opacity-50" />
-          <p className="text-sm font-bold text-slate-400 dark:text-slate-500">សូមចុចប៊ូតុង «បែងចែកក្រុមឥឡូវនេះ» ដើម្បីកំណត់ក្រុមស្មើគ្នាដែលមានសិស្សចម្រុះគ្រប់ប្រភេទ!</p>
+        <div className={`text-center py-20 border border-dashed rounded-3xl transition-all duration-300 ${
+          isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          <Users className={`w-12 h-12 mx-auto mb-2 opacity-50 transition-all duration-300 ${
+            isDarkMode ? 'text-slate-700' : 'text-slate-300'
+          }`} />
+          <p className={`text-sm font-bold transition-all duration-300 ${
+            isDarkMode ? 'text-slate-500' : 'text-slate-400'
+          }`}>សូមចុចប៊ូតុង «បែងចែកក្រុមឥឡូវនេះ» ដើម្បីកំណត់ក្រុមស្មើគ្នាដែលមានសិស្សចម្រុះគ្រប់ប្រភេទ!</p>
         </div>
       )}
     </div>

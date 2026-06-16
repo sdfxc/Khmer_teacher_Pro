@@ -11,6 +11,7 @@ interface SpinningWheelProps {
   onSelectStudent: (student: Student) => void;
   selectedStudent: Student | null;
   onAddStudent: (name: string) => void;
+  onBulkAddStudents?: (list: { name: string; gender: 'ប្រុស' | 'ស្រី'; status: 'ឆ្នើម' | 'សកម្ម' | 'កំពុងរីកចម្រើន' | 'គួរឲ្យបារម្ភ' }[]) => void;
   showBulkInput: boolean;
   setShowBulkInput: (val: boolean) => void;
   isDarkMode?: boolean;
@@ -70,6 +71,7 @@ export default function SpinningWheel({
   onSelectStudent,
   selectedStudent,
   onAddStudent,
+  onBulkAddStudents,
   showBulkInput,
   setShowBulkInput,
   isDarkMode = false
@@ -277,7 +279,15 @@ export default function SpinningWheel({
     e.preventDefault();
     if (bulkText.trim()) {
       const names = bulkText.split('\n').filter(n => n.trim());
-      names.forEach(name => onAddStudent(name.trim()));
+      if (onBulkAddStudents) {
+        onBulkAddStudents(names.map(name => ({
+          name: name.trim(),
+          gender: 'ប្រុស' as const,
+          status: 'សកម្ម' as const
+        })));
+      } else {
+        names.forEach(name => onAddStudent(name.trim()));
+      }
       setBulkText('');
       setShowBulkInput(false);
     }

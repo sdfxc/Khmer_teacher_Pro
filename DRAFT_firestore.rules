@@ -7,20 +7,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
     
-    // Primitive definition helpers
-    function incoming() {
-      return request.resource.data;
-    }
-    
-    // Validation helper for Teacher
-    function existing() {
-      return resource.data;
-    }
-    
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-    
     // Validation helper for Teacher
     function isValidTeacher(data) {
       return data.keys().hasAll(['id', 'name', 'schoolName', 'username', 'password'])
@@ -45,38 +31,16 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      allow get: if isValidId(teacherId);
-      allow create: if isValidId(teacherId) && isValidTeacher(incoming());
-      allow update: if isValidId(teacherId) && isValidTeacher(incoming()) && existing().password == incoming().password;
-      allow delete: if isValidId(teacherId) && existing() != null;
+      allow create: if isValidTeacher(incoming());
+      allow get: if true;
+      allow update, delete: if isValidTeacher(incoming()) && existing().password == incoming().password;
       
       match /classes/{classId} {
-        allow get: if isValidId(teacherId) && isValidId(classId);
-        allow list: if isValidId(teacherId);
-        allow create: if isValidId(teacherId) && isValidId(classId) 
-          && exists(/databases/$(database)/documents/teachers/$(teacherId))
-          && isValidClass(incoming());
-        allow update: if isValidId(teacherId) && isValidId(classId) && isValidClass(incoming());
-        allow delete: if isValidId(teacherId) && isValidId(classId) && existing() != null;
-        
-        match /groupsData/{docId} {
-          allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(docId);
-          allow list: if isValidId(teacherId) && isValidId(classId);
-          allow create, update: if isValidId(teacherId) && isValidId(classId) && isValidId(docId)
-            && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId));
-          allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(docId) && existing() != null;
-        }
+        allow read, write: if true;
       }
       
       match /classes/{classId}/students/{studentId} {
-        allow get: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId);
-        allow list: if isValidId(teacherId) && isValidId(classId);
-        allow create: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
-          && exists(/databases/$(database)/documents/teachers/$(teacherId)/classes/$(classId))
-          && isValidStudent(incoming());
-        allow update: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId)
-          && isValidStudent(incoming());
-        allow delete: if isValidId(teacherId) && isValidId(classId) && isValidId(studentId) && existing() != null;
+        allow read, write: if true;
       }
     }
   }

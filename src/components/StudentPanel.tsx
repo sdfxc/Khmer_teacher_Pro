@@ -71,6 +71,7 @@ export default function StudentPanel({
   const [newName, setNewName] = useState('');
   const [isSpinning, setIsSpinning] = useState(false);
   const [showBulkInput, setShowBulkInput] = useState(false);
+  const [bulkText, setBulkText] = useState('');
 
   const tickAudio = useRef<HTMLAudioElement | null>(null);
   const fireworkAudio = useRef<HTMLAudioElement | null>(null);
@@ -120,6 +121,7 @@ export default function StudentPanel({
   const handleBulkAdd = (text: string) => {
     const names = text.split('\n').filter(n => n.trim());
     names.forEach(name => onAddStudent(name.trim()));
+    setBulkText('');
     setShowBulkInput(false);
   };
 
@@ -291,23 +293,37 @@ export default function StudentPanel({
             <div className="bg-white dark:bg-slate-900 border-2 border-indigo-100 dark:border-indigo-950/30 rounded-2xl p-4 shadow-inner">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase mb-2">បញ្ចូលឈ្មោះច្រើន (មួយជួរ ឈ្មោះមួយ)</p>
               <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
                 className="w-full h-32 p-3 text-sm border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
                 placeholder="ឈ្មោះសិស្ស ១&#10;ឈ្មោះសិស្ស ២..."
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.ctrlKey) {
-                    handleBulkAdd((e.target as HTMLTextAreaElement).value);
-                  }
-                }}
-                onBlur={(e) => {
-                  if (e.target.value.trim()) {
-                    handleBulkAdd(e.target.value);
-                  } else {
-                    setShowBulkInput(false);
+                    e.preventDefault();
+                    handleBulkAdd(bulkText);
                   }
                 }}
                 autoFocus
               />
-              <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-2 italic">ចុចខាងក្រៅដើម្បីបញ្ចូល</p>
+              <div className="flex justify-end gap-2 text-xs mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkText('');
+                    setShowBulkInput(false);
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                >
+                  បោះបង់
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBulkAdd(bulkText)}
+                  className="px-3 py-1.5 bg-indigo-600 dark:bg-indigo-500 text-white rounded-xl font-bold hover:bg-indigo-700 cursor-pointer transition-colors"
+                >
+                  បញ្ចូល
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

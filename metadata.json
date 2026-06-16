@@ -1,6 +1,6 @@
 {
-  "name": "StudyPlay",
-  "description": "វេទិកាលេងល្បែងសិក្សាកម្សាន្តលក្ខណៈឆ្លើយសំណួរពហុជម្រើស បែបផ្សងព្រេងប្រជែងគ្នាពោរពេញដោយភាពសប្បាយរីករាយ និងចំណេះដឹង",
+  "name": "Remix: EduSpin Quiz Master",
+  "description": "An interactive classroom game with a student randomizer and AI-powered flashcard quizzes generated from lesson content.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
