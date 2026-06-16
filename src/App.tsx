@@ -481,8 +481,8 @@ export default function App() {
          }
 
          // If the cloud account has 0 classes, migrate local classes that the user added previously to their cloud account
-         if (fetchedClasses.length === 0) {
-           const localClassesStr = localStorage.getItem('khmer_teacher_classes');
+         if (true) {
+           const localClassesStr = localStorage.getItem(`khmer_teacher_classes_${teacher.id}`) || localStorage.getItem('khmer_teacher_classes');
            if (localClassesStr) {
              try {
                const localClasses = JSON.parse(localClassesStr) as ClassInfo[];
@@ -490,6 +490,9 @@ export default function App() {
                
                if (validLocalClasses.length > 0) {
                  for (const lc of validLocalClasses) {
+                    if (fetchedClasses.some(fc => fc.id === lc.id)) {
+                      continue;
+                    }
                    // 1. Load subjects, activeSubjectId, activeRoomId
                    const localSubjectsStr = localStorage.getItem(`subjects_class_${lc.id}`);
                    let finalSubjects: QuizSubject[] = [];
@@ -744,10 +747,24 @@ export default function App() {
           }
           loadedActiveRoomId = classData.activeRoomId || null;
         } else {
-          // Empty or new class in cloud
-          const migration = getMigratedSubjects([]);
-          loadedSubjects = migration.subjects;
-          loadedActiveSubjectId = migration.activeSubjectId;
+          // Empty or new class in cloud – check local storage fallback first to prevent overwriting local guest data
+          const localSubjectsStr = localStorage.getItem(`subjects_class_${activeClassId}`);
+          if (localSubjectsStr) {
+            try {
+              loadedSubjects = JSON.parse(localSubjectsStr);
+              loadedActiveSubjectId = localStorage.getItem(`active_subject_id_${activeClassId}`) || (loadedSubjects[0]?.id || null);
+              loadedActiveRoomId = localStorage.getItem(`active_room_id_${activeClassId}`);
+            } catch (err) {
+              console.error('Failed to parse local subjects fallback:', err);
+              const migration = getMigratedSubjects([]);
+              loadedSubjects = migration.subjects;
+              loadedActiveSubjectId = migration.activeSubjectId;
+            }
+          } else {
+            const migration = getMigratedSubjects([]);
+            loadedSubjects = migration.subjects;
+            loadedActiveSubjectId = migration.activeSubjectId;
+          }
           
           const localClassObj = classes.find(c => c.id === activeClassId);
           const classNameToSave = localClassObj?.name || 'ថ្នាក់ថ្មី';
@@ -757,6 +774,7 @@ export default function App() {
             name: classNameToSave,
             subjects: loadedSubjects,
             activeSubjectId: loadedActiveSubjectId,
+            activeRoomId: loadedActiveRoomId,
             createdAt: new Date().toISOString()
           }, { merge: true });
         }
@@ -791,6 +809,27 @@ export default function App() {
         studentsSnap.forEach(docSnap => {
           loadedStudents.push(docSnap.data() as Student);
         });
+        
+        // Fallback to local guest data if cloud has 0 students to prevent overwriting newly added local students
+        if (loadedStudents.length === 0) {
+          const localStudentsStr = localStorage.getItem(`students_class_${activeClassId}`);
+          if (localStudentsStr) {
+            try {
+              const localStudents = JSON.parse(localStudentsStr) as Student[];
+              if (localStudents.length > 0) {
+                loadedStudents = localStudents;
+                // Upload local students to cloud Firestore so they persist on cloud too
+                for (const std of localStudents) {
+                  if (std && std.id) {
+                    await setDoc(doc(db, 'teachers', teacher.id, 'classes', activeClassId, 'students', std.id), std);
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Failed to parse local students fallback:', err);
+            }
+          }
+        }
         setStudents(loadedStudents);
       } catch (err) {
         console.error('Failed to load class details from Firestore:', err);
